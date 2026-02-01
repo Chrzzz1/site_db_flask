@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% set title = "SQL (lecture seule)" %}
+
+{% block content %}
+  <section class="card">
+    <h1>Console SQL (lecture seule)</h1>
+    <p class="muted">
+      Autorisé: <code>SELECT</code> ou <code>WITH ... SELECT</code> (sans <code>;</code>). Résultats limités à 200 lignes.
+    </p>
+
+    <form method="post" class="form">
+      <label class="label" for="sql">Requête</label>
+      <textarea class="textarea" id="sql" name="sql" rows="8" spellcheck="false"
+        placeholder="Ex: SELECT id, last_name, first_name, phone FROM patients ORDER BY id DESC">{{ sql_text }}</textarea>
+      <div class="form__actions">
+        <button class="btn" type="submit">Exécuter</button>
+        <a class="btn btn--ghost" href="{{ url_for('sql_console') }}">Effacer</a>
+      </div>
+    </form>
+
+    {% if error %}
+      <div class="alert alert--error">{{ error }}</div>
+    {% endif %}
+  </section>
+
+  {% if columns and results %}
+    <section class="card">
+      <div class="card__header">
+        <h2>Résultats</h2>
+        <div class="muted">{{ results|length }} ligne(s)</div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              {% for c in columns %}
+                <th>{{ c }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in results %}
+              <tr>
+                {% for cell in row %}
+                  <td>{{ cell }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% elif sql_text and not error %}
+    <section class="card">
+      <h2>Résultats</h2>
+      <p class="muted">Aucune ligne retournée.</p>
+    </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Exemples</h2>
+    <pre class="code">SELECT * FROM patients</pre>
+    <pre class="code">SELECT consultation_date, montant_acte, montant_recu FROM consultations ORDER BY consultation_date DESC</pre>
+    <pre class="code">SELECT p.last_name, p.first_name, COUNT(*) AS nb FROM patients p JOIN consultations c ON c.patient_id = p.id GROUP BY p.id ORDER BY nb DESC</pre>
+  </section>
+{% endblock %}

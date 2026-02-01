@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% set title = "Ajouter un patient" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Ajouter un patient</h1>
+      <a class="btn btn--ghost" href="{{ url_for('index') }}">Recherche</a>
+    </div>
+
+    {% if error %}
+      <div class="alert alert--error">{{ error }}</div>
+    {% endif %}
+
+    <form class="form" method="post" action="{{ url_for('add_patient_submit') }}">
+      <div class="form__grid">
+        <div class="form__row">
+          <label class="label" for="last_name">Nom <span class="required">*</span></label>
+          <input class="input" id="last_name" name="last_name" value="{{ last_name or '' }}" required />
+        </div>
+        <div class="form__row">
+          <label class="label" for="first_name">Prénom <span class="required">*</span></label>
+          <input class="input" id="first_name" name="first_name" value="{{ first_name or '' }}" required />
+        </div>
+      </div>
+
+      <div class="form__grid">
+        <div class="form__row">
+          <label class="label" for="date_of_birth">Date de naissance</label>
+          <input class="input input--small" id="date_of_birth" name="date_of_birth" type="date" value="{{ date_of_birth or '' }}" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="profession">Profession</label>
+          <input class="input" id="profession" name="profession" value="{{ profession or '' }}" />
+        </div>
+      </div>
+
+      <div class="form__grid">
+        <div class="form__row">
+          <label class="label" for="phone">Téléphone</label>
+          <input class="input" id="phone" name="phone" value="{{ phone or '' }}" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="other_phone_1">Autre numéro #1</label>
+          <input class="input" id="other_phone_1" name="other_phone_1" value="{{ other_phone_1 or '' }}" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="other_phone_2">Autre numéro #2</label>
+          <input class="input" id="other_phone_2" name="other_phone_2" value="{{ other_phone_2 or '' }}" />
+        </div>
+      </div>
+
+      <div class="form__row">
+        <label class="label" for="address">Adresse</label>
+        <input class="input" id="address" name="address" value="{{ address or '' }}" />
+      </div>
+
+      <div class="form__grid">
+        <div class="form__row">
+          <label class="label" for="insurance">Assurance</label>
+          <input class="input" id="insurance" name="insurance" value="{{ insurance or '' }}" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="matricule">Matricule</label>
+          <input class="input" id="matricule" name="matricule" value="{{ matricule or '' }}" />
+        </div>
+      </div>
+
+      <div class="form__grid">
+        <div class="form__row">
+          <label class="label" for="identifiant_1">Identifiant 1</label>
+          <input class="input" id="identifiant_1" name="identifiant_1" value="{{ identifiant_1 or '' }}" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="identifiant_2">Identifiant 2</label>
+          <input class="input" id="identifiant_2" name="identifiant_2" value="{{ identifiant_2 or '' }}" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="identifiant_final">Identifiant final</label>
+          <input class="input" id="identifiant_final" name="identifiant_final" value="{{ identifiant_final or '' }}" />
+        </div>
+      </div>
+
+      <h2>Fiches (optionnel)</h2>
+      <div class="form__grid form__grid--wide">
+        {% for i in range(1, 11) %}
+          <div class="form__row">
+            <label class="label" for="fiche_{{ i }}">Fiche #{{ i }}</label>
+            <input class="input" id="fiche_{{ i }}" name="fiche_{{ i }}" value="{{ request.form.get('fiche_' ~ i, '') }}" />
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="form__actions">
+        <button class="btn" type="submit">Enregistrer le patient</button>
+        <a class="btn btn--ghost" href="{{ url_for('index') }}">Annuler</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

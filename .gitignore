@@ -1,0 +1,28 @@
+# Environnement virtuel
+.venv/
+venv/
+env/
+
+# Base SQLite locale (ne pas versionner)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Variables d'environnement (ne jamais commiter les secrets)
+.env
+.env.local
+*.env
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

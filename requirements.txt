@@ -1,0 +1,9 @@
+Flask>=3.0.0
+SQLAlchemy>=2.0.0
+# Pour PostgreSQL (AWS RDS): utiliser l'URL postgresql+psycopg://...
+psycopg[binary]>=3.1.0
+# Import Excel
+pandas>=2.0.0
+openpyxl>=3.1.0
+# Production (EC2, etc.)
+gunicorn>=21.0.0

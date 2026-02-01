@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% set title = "Recherche" %}
+
+{% block content %}
+  <section class="card">
+    <h1>Recherche patients</h1>
+    <p class="muted">Remplis un ou plusieurs champs: la recherche est <strong>combinatoire</strong> (les critères se cumulent).</p>
+
+    <form class="form" method="get" action="{{ url_for('index') }}">
+      <div class="form__row">
+        <label class="label" for="last_name">Nom</label>
+        <input class="input" id="last_name" name="last_name" value="{{ last_name }}" placeholder="ex: Dupont" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="first_name">Prénom</label>
+        <input class="input" id="first_name" name="first_name" value="{{ first_name }}" placeholder="ex: Claire" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="matricule">Matricule</label>
+        <input class="input" id="matricule" name="matricule" value="{{ matricule }}" placeholder="ex: MAT-001" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="date_of_birth">Date de naissance</label>
+        <input class="input input--small" id="date_of_birth" name="date_of_birth" value="{{ date_of_birth }}" placeholder="YYYY-MM-DD ou JJ/MM/AAAA" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="phone">Téléphone</label>
+        <input class="input" id="phone" name="phone" value="{{ phone }}" placeholder="ex: 0600" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="limit">Limite</label>
+        <input class="input input--small" id="limit" name="limit" value="{{ limit }}" type="number" min="1" max="200" />
+      </div>
+      <div class="form__actions">
+        <button class="btn" type="submit">Rechercher</button>
+        <a class="btn btn--ghost" href="{{ url_for('index') }}">Réinitialiser</a>
+      </div>
+    </form>
+  </section>
+
+  {% set has_filters = (last_name or first_name or matricule or date_of_birth or phone) %}
+  {% if has_filters %}
+    <section class="card">
+      <div class="card__header">
+        <h2>Résultats</h2>
+        <div class="muted">{{ rows|length }} ligne(s)</div>
+      </div>
+
+      {% if rows %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>id</th>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Date naissance</th>
+                <th>Téléphone</th>
+                <th>Matricule</th>
+                <th>Identifiant final</th>
+                <th>Dernière consultation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>{{ r["id"] }}</td>
+                  <td><a href="{{ url_for('patient_detail', patient_id=r['id']) }}">{{ r["last_name"] }}</a></td>
+                  <td>{{ r["first_name"] }}</td>
+                  <td>{{ r["date_of_birth"] }}</td>
+                  <td>{{ r["phone"] }}</td>
+                  <td>{{ r["matricule"] }}</td>
+                  <td>{{ r["identifiant_final"] }}</td>
+                  <td>{{ r["last_consultation_date"] }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">Aucun résultat.</p>
+      {% endif %}
+    </section>
+
+    {% if sql_used %}
+    <section class="card">
+      <h2>Requête utilisée (démo)</h2>
+      <pre class="code">{{ sql_used }}</pre>
+      <div class="muted">Paramètres: <code>{{ params_used }}</code></div>
+    </section>
+    {% endif %}
+  {% endif %}
+
+  <section class="card">
+    <h2>Données de démo</h2>
+    <form method="post" action="{{ url_for('reset_demo_data') }}">
+      <button class="btn btn--danger" type="submit">Réinitialiser les données de démo</button>
+      <span class="muted">Recrée les tables <code>patients</code> et <code>consultations</code>.</span>
+    </form>
+  </section>
+{% endblock %}

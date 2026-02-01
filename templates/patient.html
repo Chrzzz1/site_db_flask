@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% set title = "Détail patient" %}
+
+{% block content %}
+  {% if not patient %}
+    <section class="card">
+      <h1>Patient introuvable</h1>
+      <p class="muted">Vérifie l’identifiant du patient.</p>
+      <a class="btn btn--ghost" href="{{ url_for('index') }}">Retour</a>
+    </section>
+  {% else %}
+    {% if error %}
+      <section class="card">
+        <div class="alert alert--error">{{ error }}</div>
+      </section>
+    {% endif %}
+
+    <section class="card">
+      <div class="card__header">
+        <h1>{{ patient["last_name"] }} {{ patient["first_name"] }}</h1>
+        <a class="btn btn--ghost" href="{{ url_for('index', last_name=patient['last_name'], first_name=patient['first_name']) }}">Rechercher</a>
+      </div>
+
+      <div class="kv">
+        <div class="kv__item"><div class="kv__k">Date de naissance</div><div class="kv__v">{{ patient["date_of_birth"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Profession</div><div class="kv__v">{{ patient["profession"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Téléphone</div><div class="kv__v">{{ patient["phone"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Autre numéro #1</div><div class="kv__v">{{ patient["other_phone_1"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Autre numéro #2</div><div class="kv__v">{{ patient["other_phone_2"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Adresse</div><div class="kv__v">{{ patient["address"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Assurance</div><div class="kv__v">{{ patient["insurance"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Matricule</div><div class="kv__v">{{ patient["matricule"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Identifiant 1</div><div class="kv__v">{{ patient["identifiant_1"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Identifiant 2</div><div class="kv__v">{{ patient["identifiant_2"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Identifiant final</div><div class="kv__v">{{ patient["identifiant_final"] }}</div></div>
+      </div>
+
+      {% if fiches %}
+        <h2>Fiches</h2>
+        <ul>
+          {% for f in fiches %}
+            <li><code>{{ f }}</code></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Aucune fiche renseignée.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2>Consultations</h2>
+        <div class="muted">{{ consultations|length }} ligne(s)</div>
+      </div>
+
+      {% if consultations %}
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Détail</th>
+                <th>Montant acte</th>
+                <th>Montant reçu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in consultations %}
+                <tr>
+                  <td>{{ c["consultation_date"] }}</td>
+                  <td>{{ c["consultation_detail"] }}</td>
+                  <td>{{ c["montant_acte"] }}</td>
+                  <td>{{ c["montant_recu"] }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="muted">Aucune consultation enregistrée.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2>Ajouter une consultation</h2>
+        <div class="muted">Enregistre une nouvelle ligne</div>
+      </div>
+      <form class="form" method="post" action="{{ url_for('add_consultation', patient_id=patient['id']) }}">
+        <div class="form__row">
+          <label class="label" for="consultation_date">Date de consultation</label>
+          <input class="input input--small" id="consultation_date" name="consultation_date" type="date" required />
+        </div>
+        <div class="form__row">
+          <label class="label" for="consultation_detail">Détail de la consultation</label>
+          <textarea class="textarea" id="consultation_detail" name="consultation_detail" rows="4" placeholder="Motif / examen / traitement..."></textarea>
+        </div>
+        <div class="form__row">
+          <label class="label" for="montant_acte">Montant de l'acte</label>
+          <input class="input input--small" id="montant_acte" name="montant_acte" inputmode="decimal" placeholder="ex: 50" />
+        </div>
+        <div class="form__row">
+          <label class="label" for="montant_recu">Montant reçu</label>
+          <input class="input input--small" id="montant_recu" name="montant_recu" inputmode="decimal" placeholder="ex: 50" />
+        </div>
+        <div class="form__actions">
+          <button class="btn" type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+{% endblock %}
