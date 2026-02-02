@@ -62,6 +62,16 @@ def _date_from_parts(day: str, month: str, year: str) -> str:
     return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
 
 
+def _normalize_fiche_url(url: str) -> str:
+    """Préfixe https:// si l’URL de fiche n’a pas de schéma (évite lien relatif → 404)."""
+    if not url or not isinstance(url, str):
+        return url or ""
+    u = url.strip()
+    if u.startswith("http://") or u.startswith("https://"):
+        return u
+    return "https://" + u
+
+
 def _parse_date_parts(date_str: str) -> tuple[str, str, str]:
     """Extrait (jour, mois, année) depuis YYYY-MM-DD pour pré-remplir les selects."""
     if not date_str or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str.strip()):
@@ -258,7 +268,11 @@ def create_app() -> Flask:
                 error=error,
             )
 
-        fiches = [(i, patient[f"fiche_{i}"]) for i in range(1, 11) if patient[f"fiche_{i}"]]
+        fiches = [
+            (i, _normalize_fiche_url(patient[f"fiche_{i}"]))
+            for i in range(1, 11)
+            if patient[f"fiche_{i}"]
+        ]
         return render_template(
             "patient.html",
             patient=patient,
