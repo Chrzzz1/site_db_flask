@@ -37,9 +37,11 @@
 
       {% if fiches %}
         <h2>Fiches</h2>
-        <ul>
-          {% for f in fiches %}
-            <li><code>{{ f }}</code></li>
+        <ul class="fiches-list">
+          {% for num, url in fiches %}
+            <li>
+              <a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="fiche-link">Fiche #{{ num }}</a>
+            </li>
           {% endfor %}
         </ul>
       {% else %}

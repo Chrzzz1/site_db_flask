@@ -34,17 +34,40 @@ def _normalize_date_input(v: str) -> str:
     """
     Accepte:
     - YYYY-MM-DD (ex: 1991-05-14)
+    - YYYY/MM/DD (ex: 1991/05/14 ou 1968/12/21) -> converti en YYYY-MM-DD
     - DD/MM/YYYY (ex: 14/05/1991) -> converti en YYYY-MM-DD
     Sinon renvoie la valeur nettoyée telle quelle.
     """
     v = (v or "").strip()
     if not v:
         return ""
-    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", v)
+    # YYYY/MM/DD ou YYYY-MM-DD
+    m = re.fullmatch(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})", v)
     if m:
-        dd, mm, yyyy = m.group(1), m.group(2), m.group(3)
+        yyyy, mm, dd = m.group(1), m.group(2).zfill(2), m.group(3).zfill(2)
+        return f"{yyyy}-{mm}-{dd}"
+    # DD/MM/YYYY
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", v)
+    if m:
+        dd, mm, yyyy = m.group(1).zfill(2), m.group(2).zfill(2), m.group(3)
         return f"{yyyy}-{mm}-{dd}"
     return v
+
+
+def _date_from_parts(day: str, month: str, year: str) -> str:
+    """Construit YYYY-MM-DD à partir de jour, mois, année (sélecteurs)."""
+    day, month, year = (day or "").strip(), (month or "").strip(), (year or "").strip()
+    if not day or not month or not year:
+        return ""
+    return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+
+def _parse_date_parts(date_str: str) -> tuple[str, str, str]:
+    """Extrait (jour, mois, année) depuis YYYY-MM-DD pour pré-remplir les selects."""
+    if not date_str or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str.strip()):
+        return ("", "", "")
+    y, m, d = date_str.strip().split("-")
+    return (d.lstrip("0") or "1", m.lstrip("0") or "1", y)
 
 
 def create_app() -> Flask:
@@ -58,7 +81,19 @@ def create_app() -> Flask:
         last_name = (request.args.get("last_name") or "").strip()
         first_name = (request.args.get("first_name") or "").strip()
         matricule = (request.args.get("matricule") or "").strip()
-        date_of_birth = _normalize_date_input(request.args.get("date_of_birth") or "")
+        date_day = (request.args.get("date_day") or "").strip()
+        date_month = (request.args.get("date_month") or "").strip()
+        date_year = (request.args.get("date_year") or "").strip()
+        if date_day and date_month and date_year:
+            date_of_birth = _date_from_parts(date_day, date_month, date_year)
+        elif date_month and date_year:
+            date_of_birth = f"{date_year}-{date_month.zfill(2)}-%"
+        elif date_year:
+            date_of_birth = f"{date_year}-%"
+        else:
+            date_of_birth = _normalize_date_input(request.args.get("date_of_birth") or "")
+        if date_of_birth and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_of_birth):
+            date_day, date_month, date_year = _parse_date_parts(date_of_birth)
         phone = (request.args.get("phone") or "").strip()
         try:
             limit = int(request.args.get("limit") or "50")
@@ -120,10 +155,18 @@ def create_app() -> Flask:
             )
 
         if date_of_birth:
-            # Si date complète YYYY-MM-DD, on fait un match exact, sinon LIKE (ex: 1991)
+            # Date complète YYYY-MM-DD → match exact ou avec heure (1993-08-03 00:00:00)
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_of_birth):
                 params["dob_eq"] = date_of_birth
-                where_parts.append("p.date_of_birth = :dob_eq")
+                params["dob_like_start"] = date_of_birth + "%"
+                y, m, d = date_of_birth.split("-")
+                params["dob_ddmmyyyy"] = f"{d}/{m}/{y}"
+                where_parts.append(
+                    "(TRIM(p.date_of_birth) = :dob_eq OR p.date_of_birth LIKE :dob_like_start OR p.date_of_birth = :dob_ddmmyyyy)"
+                )
+            elif "%" in date_of_birth:
+                params["dob_like"] = date_of_birth
+                where_parts.append("p.date_of_birth LIKE :dob_like")
             else:
                 params["dob_like"] = f"%{date_of_birth}%"
                 where_parts.append("p.date_of_birth LIKE :dob_like")
@@ -151,6 +194,9 @@ def create_app() -> Flask:
             first_name=first_name,
             matricule=matricule,
             date_of_birth=date_of_birth,
+            date_day=date_day,
+            date_month=date_month,
+            date_year=date_year,
             phone=phone,
             limit=limit,
             rows=rows,
@@ -212,7 +258,7 @@ def create_app() -> Flask:
                 error=error,
             )
 
-        fiches = [patient[f"fiche_{i}"] for i in range(1, 11) if patient[f"fiche_{i}"]]
+        fiches = [(i, patient[f"fiche_{i}"]) for i in range(1, 11) if patient[f"fiche_{i}"]]
         return render_template(
             "patient.html",
             patient=patient,
@@ -284,19 +330,37 @@ def create_app() -> Flask:
 
     @app.get("/patients/new")
     def add_patient_form() -> str:
-        return render_template("add_patient.html", error="")
+        return render_template(
+            "add_patient.html",
+            error="",
+            date_day="",
+            date_month="",
+            date_year="",
+        )
 
     @app.post("/patients/new")
     def add_patient_submit():
         last_name = (request.form.get("last_name") or "").strip()
         first_name = (request.form.get("first_name") or "").strip()
+        date_day = (request.form.get("date_day") or "").strip()
+        date_month = (request.form.get("date_month") or "").strip()
+        date_year = (request.form.get("date_year") or "").strip()
+        if date_day and date_month and date_year:
+            date_of_birth = _date_from_parts(date_day, date_month, date_year)
+        else:
+            date_of_birth = (request.form.get("date_of_birth") or "").strip() or None
+            date_of_birth = _normalize_date_input(date_of_birth) if date_of_birth else None
+
         if not last_name or not first_name:
             return render_template(
                 "add_patient.html",
                 error="Le nom et le prénom sont obligatoires.",
                 last_name=last_name,
                 first_name=first_name,
-                date_of_birth=request.form.get("date_of_birth", "").strip(),
+                date_of_birth=date_of_birth or "",
+                date_day=date_day,
+                date_month=date_month,
+                date_year=date_year,
                 profession=request.form.get("profession", "").strip(),
                 phone=request.form.get("phone", "").strip(),
                 other_phone_1=request.form.get("other_phone_1", "").strip(),
@@ -308,8 +372,6 @@ def create_app() -> Flask:
                 identifiant_2=request.form.get("identifiant_2", "").strip(),
                 identifiant_final=request.form.get("identifiant_final", "").strip(),
             )
-        date_of_birth = (request.form.get("date_of_birth") or "").strip() or None
-        date_of_birth = _normalize_date_input(date_of_birth) if date_of_birth else None
         row = {
             "last_name": last_name,
             "first_name": first_name,
@@ -401,28 +463,6 @@ def create_app() -> Flask:
             res = con.execute(text(sql_used), params)
             rows = [dict(r) for r in res.mappings().all()]
         return jsonify({"count": len(rows), "rows": rows})
-
-    @app.route("/sql", methods=["GET", "POST"])
-    def sql_console() -> str:
-        error = ""
-        sql_text = ""
-        columns: list[str] = []
-        results: list[list[Any]] = []
-
-        if request.method == "POST":
-            sql_text = (request.form.get("sql") or "").strip()
-            try:
-                columns, results = run_readonly_sql(sql_text)
-            except ValueError as e:
-                error = str(e)
-
-        return render_template(
-            "sql.html",
-            sql_text=sql_text,
-            error=error,
-            columns=columns,
-            results=results,
-        )
 
     @app.post("/reset-demo-data")
     def reset_demo_data():

@@ -1,23 +1,24 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" id="html-theme">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>{{ title or "Site + Base de données" }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script>var _t=localStorage.getItem('theme');if(_t)document.documentElement.setAttribute('data-theme',_t);</script>
   </head>
   <body>
     <header class="header">
       <div class="container header__inner">
-        <div class="brand">
-          <div class="brand__title">Site + Base de données</div>
-          <div class="brand__subtitle">Interroger et voir les résultats</div>
-        </div>
+        <div class="brand"></div>
         <nav class="nav">
           <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}">Recherche</a>
           <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'add_patient_form' else '' }}" href="{{ url_for('add_patient_form') }}">Ajouter un patient</a>
-          <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'sql_console' else '' }}" href="{{ url_for('sql_console') }}">SQL (lecture seule)</a>
+          <button type="button" class="btn btn--ghost btn--icon" id="theme-toggle" aria-label="Basculer mode clair / sombre" title="Mode sombre">
+            <span class="theme-icon theme-icon--sun" aria-hidden="true">☀</span>
+            <span class="theme-icon theme-icon--moon" aria-hidden="true">🌙</span>
+          </button>
         </nav>
       </div>
     </header>
@@ -27,11 +28,51 @@
     </main>
 
     <footer class="footer">
-      <div class="container">
-        <div class="muted">
-          Base: SQLite local ou PostgreSQL (via <code>DATABASE_URL</code>) — Démo Flask
-        </div>
-      </div>
+      <div class="container"></div>
     </footer>
+    <script>
+      (function() {
+        var KEY = 'theme';
+        var html = document.getElementById('html-theme');
+        var btn = document.getElementById('theme-toggle');
+        var sun = document.querySelector('.theme-icon--sun');
+        var moon = document.querySelector('.theme-icon--moon');
+
+        function applyTheme(dark) {
+          if (dark) {
+            html.setAttribute('data-theme', 'dark');
+            if (sun) sun.style.display = 'none';
+            if (moon) moon.style.display = 'inline';
+          } else {
+            html.setAttribute('data-theme', 'light');
+            if (sun) sun.style.display = 'inline';
+            if (moon) moon.style.display = 'none';
+          }
+        }
+
+        function init() {
+          var saved = localStorage.getItem(KEY);
+          if (saved === 'dark') {
+            applyTheme(true);
+          } else if (saved === 'light') {
+            applyTheme(false);
+          } else {
+            var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            applyTheme(prefersDark);
+          }
+        }
+
+        if (btn) {
+          btn.addEventListener('click', function() {
+            var isDark = html.getAttribute('data-theme') === 'dark';
+            var next = !isDark;
+            applyTheme(next);
+            localStorage.setItem(KEY, next ? 'dark' : 'light');
+          });
+        }
+
+        init();
+      })();
+    </script>
   </body>
 </html>

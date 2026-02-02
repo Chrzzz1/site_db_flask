@@ -5,11 +5,15 @@ vers la base utilisée par le site (SQLite ou PostgreSQL via DATABASE_URL).
 Usage (depuis la racine du projet):
   python -m scripts.import_excel chemin/vers/fichier.xlsx
 
-Ou avec mapping personnalisé des colonnes (voir COLUMN_MAPPING ci-dessous).
+Colonnes supportées (exactement comme dans ton Excel):
+  Nom du patient, Prénom du patient, Date de naissance du patient (DD/MM/YYYY),
+  Profession, Téléphone, Autre numéro (x2), Adresse, Assurance, Matricule,
+  Fiche #1..#10, Identifiant 1/2/final, puis blocs Date consultation N + Détail + Montant acte + Montant reçu.
 """
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -25,7 +29,7 @@ from app import get_engine, get_metadata
 
 
 # Correspondance nom de colonne Excel (exact ou après nettoyage) -> colonne table patients
-# Tu peux modifier selon les en-têtes de ton fichier.
+# En-têtes exacts de ton Excel : Nom du patient, Prénom du patient, etc.
 COLUMN_MAPPING_PATIENTS = {
     "nom": "last_name",
     "nom du patient": "last_name",
@@ -40,6 +44,8 @@ COLUMN_MAPPING_PATIENTS = {
     "autre numéro": "other_phone_1",
     "autre numéro #1": "other_phone_1",
     "autre numéro #2": "other_phone_2",
+    "autre numéro du patient (s'il y en a)": "other_phone_1",
+    "autre numéro du patient (s'il y en a).1": "other_phone_2",
     "adresse": "address",
     "adresse du patient": "address",
     "assurance": "insurance",
@@ -59,16 +65,8 @@ COLUMN_MAPPING_PATIENTS = {
     "identifiant final": "identifiant_final",
 }
 
-# Colonnes Excel optionnelles pour créer une consultation par ligne
-COLUMN_MAPPING_CONSULTATION = {
-    "date de consultation 1": "consultation_date",
-    "date consultation 1": "consultation_date",
-    "détail de la consultation": "consultation_detail",
-    "détail consultation": "consultation_detail",
-    "montant de l'acte": "montant_acte",
-    "montant acte": "montant_acte",
-    "montant reçu": "montant_recu",
-}
+# Pattern pour détecter les colonnes "Date de consultation 1", "Date de consultation 2", etc.
+CONSULTATION_DATE_PATTERN = re.compile(r"^date de consultation \d+$", re.IGNORECASE)
 
 
 def _normalize_header(name: str) -> str:
@@ -77,18 +75,57 @@ def _normalize_header(name: str) -> str:
     return name.strip().lower()
 
 
+def _parse_date_fr(val) -> str | None:
+    """Parse une date DD/MM/YYYY ou YYYY-MM-DD, retourne YYYY-MM-DD ou None."""
+    if pd.isna(val):
+        return None
+    if hasattr(val, "strftime"):
+        return val.strftime("%Y-%m-%d")
+    s = str(val).strip()
+    if not s:
+        return None
+    # DD/MM/YYYY
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", s)
+    if m:
+        d, mo, y = m.group(1).zfill(2), m.group(2).zfill(2), m.group(3)
+        return f"{y}-{mo}-{d}"
+    # YYYY-MM-DD déjà
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    return s
+
+
+def _parse_float_fr(val):
+    """Parse un nombre français (espace milliers, virgule décimale) ou anglais."""
+    if pd.isna(val) or val == "":
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace("\u202f", " ").replace(" ", "")
+    if not s:
+        return None
+    s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def _row_to_patient(row: pd.Series, header_to_db: dict[str, str]) -> dict:
     out: dict = {}
     for excel_col, db_col in header_to_db.items():
-        if excel_col in row.index:
-            val = row.get(excel_col)
-            if pd.isna(val) or (isinstance(val, str) and val.strip().lower() in ("nan", "")):
-                val = None
-            elif hasattr(val, "strftime"):
-                val = val.strftime("%Y-%m-%d")
-            else:
-                val = str(val).strip() or None
-            out[db_col] = val
+        if excel_col not in row.index:
+            continue
+        val = row.get(excel_col)
+        if pd.isna(val) or (isinstance(val, str) and val.strip().lower() in ("nan", "")):
+            out[db_col] = None
+            continue
+        if db_col == "date_of_birth":
+            out[db_col] = _parse_date_fr(val)
+        elif hasattr(val, "strftime"):
+            out[db_col] = val.strftime("%Y-%m-%d")
+        else:
+            out[db_col] = str(val).strip() or None
     return out
 
 
@@ -138,17 +175,20 @@ def main() -> None:
     patients_table = md.tables["patients"]
     consultations_table = md.tables["consultations"]
 
-    # Colonnes consultation présentes dans le fichier
-    header_to_consult: dict[str, str] = {}
-    for col in df.columns:
-        n = _normalize_header(col)
-        if n in COLUMN_MAPPING_CONSULTATION:
-            header_to_consult[n] = COLUMN_MAPPING_CONSULTATION[n]
+    # Blocs consultation : "Date de consultation 1" + 3 colonnes (Détail, Montant acte, Montant reçu), etc.
+    col_list = list(df.columns)
+    consultation_blocks: list[tuple[str, str, str, str]] = []
+    for i, col in enumerate(col_list):
+        n = _normalize_header(str(col))
+        if CONSULTATION_DATE_PATTERN.match(n) and i + 3 < len(col_list):
+            consultation_blocks.append((col_list[i], col_list[i + 1], col_list[i + 2], col_list[i + 3]))
 
     inserted_patients = 0
     inserted_consultations = 0
 
     patient_columns = {c.name for c in patients_table.c if c.name not in ("id", "created_at")}
+    consult_cols = {c.name for c in consultations_table.c if c.name not in ("id", "created_at")}
+
     with engine.begin() as con:
         for idx, row in df.iterrows():
             row_dict = _row_to_patient(row, header_to_patient)
@@ -162,23 +202,27 @@ def main() -> None:
             patient_id = r.scalar_one()
             inserted_patients += 1
 
-            if header_to_consult:
-                consult_row: dict = {"patient_id": patient_id}
-                for excel_col, db_col in header_to_consult.items():
-                    if excel_col in row.index:
-                        val = row.get(excel_col)
-                        if pd.isna(val):
-                            val = None
-                        elif hasattr(val, "isoformat") or (hasattr(val, "strftime")):
-                            val = val.strftime("%Y-%m-%d") if hasattr(val, "strftime") else str(val)
-                        else:
-                            val = str(val).strip() or None
-                        consult_row[db_col] = val
-                if consult_row.get("consultation_date"):
-                    consult_cols = {c.name for c in consultations_table.c if c.name not in ("id", "created_at")}
-                    consult_row = {k: v for k, v in consult_row.items() if k in consult_cols}
-                    con.execute(consultations_table.insert(), consult_row)
-                    inserted_consultations += 1
+            for date_col, detail_col, acte_col, recu_col in consultation_blocks:
+                date_val = row.get(date_col)
+                if pd.isna(date_val) or (isinstance(date_val, str) and not date_val.strip()):
+                    continue
+                consultation_date = _parse_date_fr(date_val) or str(date_val).strip()
+                if not consultation_date:
+                    continue
+                detail_val = row.get(detail_col)
+                detail = None if pd.isna(detail_val) else str(detail_val).strip() or None
+                montant_acte = _parse_float_fr(row.get(acte_col))
+                montant_recu = _parse_float_fr(row.get(recu_col))
+                consult_row = {
+                    "patient_id": patient_id,
+                    "consultation_date": consultation_date,
+                    "consultation_detail": detail,
+                    "montant_acte": montant_acte,
+                    "montant_recu": montant_recu,
+                }
+                consult_row = {k: v for k, v in consult_row.items() if k in consult_cols}
+                con.execute(consultations_table.insert(), consult_row)
+                inserted_consultations += 1
 
     print(f"Import terminé: {inserted_patients} patient(s), {inserted_consultations} consultation(s).")
     db_url = os.environ.get("DATABASE_URL", "")

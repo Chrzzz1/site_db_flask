@@ -20,8 +20,27 @@
         <input class="input" id="matricule" name="matricule" value="{{ matricule }}" placeholder="ex: MAT-001" />
       </div>
       <div class="form__row">
-        <label class="label" for="date_of_birth">Date de naissance</label>
-        <input class="input input--small" id="date_of_birth" name="date_of_birth" value="{{ date_of_birth }}" placeholder="YYYY-MM-DD ou JJ/MM/AAAA" />
+        <label class="label">Date de naissance</label>
+        <div class="date-selects">
+          <select class="input input--small" name="date_day" id="date_day" aria-label="Jour">
+            <option value="">Jour</option>
+            {% for d in range(1, 32) %}
+              <option value="{{ d }}" {% if date_day == d|string %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+          <select class="input input--small" name="date_month" id="date_month" aria-label="Mois">
+            <option value="">Mois</option>
+            {% for m in range(1, 13) %}
+              <option value="{{ m }}" {% if date_month == m|string %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <select class="input input--small" name="date_year" id="date_year" aria-label="Année">
+            <option value="">Année</option>
+            {% for y in range(2026, 1920, -1) %}
+              <option value="{{ y }}" {% if date_year == y|string %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
       <div class="form__row">
         <label class="label" for="phone">Téléphone</label>
@@ -81,21 +100,5 @@
         <p class="muted">Aucun résultat.</p>
       {% endif %}
     </section>
-
-    {% if sql_used %}
-    <section class="card">
-      <h2>Requête utilisée (démo)</h2>
-      <pre class="code">{{ sql_used }}</pre>
-      <div class="muted">Paramètres: <code>{{ params_used }}</code></div>
-    </section>
-    {% endif %}
   {% endif %}
-
-  <section class="card">
-    <h2>Données de démo</h2>
-    <form method="post" action="{{ url_for('reset_demo_data') }}">
-      <button class="btn btn--danger" type="submit">Réinitialiser les données de démo</button>
-      <span class="muted">Recrée les tables <code>patients</code> et <code>consultations</code>.</span>
-    </form>
-  </section>
 {% endblock %}
