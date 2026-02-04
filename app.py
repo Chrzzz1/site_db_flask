@@ -129,7 +129,9 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # Créer data/ seulement en local (SQLite) ; en production DATABASE_URL pointe vers PostgreSQL
+    if not os.environ.get("DATABASE_URL", "").strip():
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
 
     def login_required(f):
@@ -881,6 +883,11 @@ def get_database_url() -> str:
         # Railway, Render, etc. fournissent souvent postgresql:// ; SQLAlchemy + psycopg a besoin de postgresql+psycopg://
         if url.startswith("postgresql://") and "postgresql+psycopg" not in url:
             url = "postgresql+psycopg://" + url.split("://", 1)[1]
+        # Render, Railway, etc. exigent souvent SSL pour PostgreSQL
+        if "postgresql" in url and "sslmode" not in url:
+            if "render.com" in url or "railway.app" in url or "supabase" in url or "neon.tech" in url:
+                sep = "&" if "?" in url else "?"
+                url = url + sep + "sslmode=require"
         return url
     # SQLite local par défaut (dev)
     return f"sqlite+pysqlite:///{DB_PATH.resolve().as_posix()}"
@@ -986,11 +993,12 @@ def init_db(force_reset: bool = False) -> None:
         try:
             con.execute(text("SELECT is_approved FROM users LIMIT 1"))
         except Exception:
+            con.rollback()
             try:
                 con.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN"))
                 con.commit()
             except Exception:
-                pass
+                con.rollback()
             with engine.begin() as c2:
                 c2.execute(text("UPDATE users SET is_approved = :v WHERE is_approved IS NULL"), {"v": True})
 
