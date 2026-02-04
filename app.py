@@ -620,7 +620,14 @@ def create_app() -> Flask:
                     "montant_recu": montant_recu,
                 },
             )
-
+        _log_action(
+            session.get("user_id"),
+            session.get("username") or "?",
+            "consultation_created",
+            "consultation",
+            None,
+            f"Patient #{patient_id}, date {consultation_date}",
+        )
         return redirect(url_for("patient_detail", patient_id=patient_id))
 
     @app.get("/patients/<int:patient_id>/edit")
@@ -698,6 +705,14 @@ def create_app() -> Flask:
                         "i2": row["identifiant_2"], "ifin": row["identifiant_final"],
                     },
                 )
+            _log_action(
+                session.get("user_id"),
+                session.get("username") or "?",
+                "patient_updated",
+                "patient",
+                patient_id,
+                f"{row['last_name']} {row['first_name']}",
+            )
             return redirect(url_for("patient_detail", patient_id=patient_id))
         with get_engine().begin() as con:
             con.execute(
@@ -793,9 +808,11 @@ def create_app() -> Flask:
             date_day="",
             date_month="",
             date_year="",
+            is_admin=session.get("is_admin"),
         )
 
     @app.post("/patients/new")
+    @login_required
     def add_patient_submit():
         last_name = (request.form.get("last_name") or "").strip()
         first_name = (request.form.get("first_name") or "").strip()
@@ -828,6 +845,7 @@ def create_app() -> Flask:
                 identifiant_1=request.form.get("identifiant_1", "").strip(),
                 identifiant_2=request.form.get("identifiant_2", "").strip(),
                 identifiant_final=request.form.get("identifiant_final", "").strip(),
+                is_admin=session.get("is_admin"),
             )
         row = {
             "last_name": last_name,
@@ -850,11 +868,37 @@ def create_app() -> Flask:
         md = get_metadata()
         pt = md.tables["patients"]
         patient_columns = {c.name for c in pt.c if c.name not in ("id", "created_at")}
-        row = {k: v for k, v in row.items() if k in patient_columns}
+        row_clean = {k: v for k, v in row.items() if k in patient_columns}
+        if session.get("is_admin"):
+            with get_engine().begin() as con:
+                r = con.execute(pt.insert().returning(pt.c.id), row_clean)
+                patient_id = r.scalar_one()
+            _log_action(
+                session.get("user_id"),
+                session.get("username") or "?",
+                "patient_created",
+                "patient",
+                patient_id,
+                f"{last_name} {first_name}",
+            )
+            return redirect(url_for("patient_detail", patient_id=patient_id))
         with get_engine().begin() as con:
-            r = con.execute(pt.insert().returning(pt.c.id), row)
-            patient_id = r.scalar_one()
-        return redirect(url_for("patient_detail", patient_id=patient_id))
+            con.execute(
+                text(
+                    "INSERT INTO modification_requests (request_type, record_id, user_id, proposed_data, status) "
+                    "VALUES ('new_patient', 0, :user_id, :data, 'pending')"
+                ),
+                {"user_id": session["user_id"], "data": json.dumps(row_clean)},
+            )
+        _log_action(
+            session.get("user_id"),
+            session.get("username") or "?",
+            "new_patient_requested",
+            "modification_request",
+            None,
+            f"Nouveau patient: {last_name} {first_name}",
+        )
+        return redirect(url_for("add_patient_form") + "?msg=patient-en-attente")
 
     @app.get("/api/patients")
     @login_required
@@ -949,7 +993,7 @@ def create_app() -> Flask:
                 text(
                     """
                     SELECT mr.id, mr.request_type, mr.record_id, mr.user_id, mr.proposed_data, mr.status, mr.created_at, u.username,
-                           CASE WHEN mr.request_type = 'patient' THEN mr.record_id ELSE (SELECT patient_id FROM consultations WHERE id = mr.record_id) END AS patient_id
+                           CASE WHEN mr.request_type = 'patient' THEN mr.record_id WHEN mr.request_type = 'new_patient' THEN NULL ELSE (SELECT patient_id FROM consultations WHERE id = mr.record_id) END AS patient_id
                     FROM modification_requests mr
                     JOIN users u ON u.id = mr.user_id
                     WHERE mr.status = 'pending'
@@ -957,12 +1001,29 @@ def create_app() -> Flask:
                     """
                 )
             ).mappings().all()
+            try:
+                action_log_list = con.execute(
+                    text(
+                        "SELECT id, user_id, username, action, entity_type, entity_id, details, created_at FROM action_log ORDER BY created_at DESC LIMIT 300"
+                    )
+                ).mappings().all()
+            except Exception:
+                action_log_list = []
+        mod_reqs = [dict(r) for r in modification_requests]
+        for mr in mod_reqs:
+            if mr.get("request_type") == "new_patient" and mr.get("proposed_data"):
+                try:
+                    d = json.loads(mr["proposed_data"])
+                    mr["summary"] = f"{d.get('last_name', '')} {d.get('first_name', '')}".strip() or "—"
+                except Exception:
+                    mr["summary"] = "—"
         return render_template(
             "admin.html",
             patients=[dict(r) for r in patients],
             consultations=[dict(r) for r in consultations],
             users=[dict(r) for r in users],
-            modification_requests=[dict(r) for r in modification_requests],
+            modification_requests=mod_reqs,
+            action_log=[dict(r) for r in action_log_list],
             current_user_id=session.get("user_id"),
         )
 
@@ -1004,8 +1065,18 @@ def create_app() -> Flask:
     @app.post("/admin/consultations/<int:consultation_id>/delete")
     @admin_required
     def admin_delete_consultation(consultation_id: int):
+        with get_engine().connect() as con:
+            c = con.execute(text("SELECT consultation_date, patient_id FROM consultations WHERE id = :id"), {"id": consultation_id}).mappings().first()
         with get_engine().begin() as con:
             con.execute(text("DELETE FROM consultations WHERE id = :cid"), {"cid": consultation_id})
+        _log_action(
+            session.get("user_id"),
+            session.get("username") or "?",
+            "consultation_deleted",
+            "consultation",
+            consultation_id,
+            f"Consultation #{consultation_id}" + (f" (patient {c['patient_id']})" if c else ""),
+        )
         return redirect(url_for("admin"))
 
     @app.post("/admin/users/<int:user_id>/set-admin")
@@ -1038,13 +1109,38 @@ def create_app() -> Flask:
     def admin_accept_modification(req_id: int):
         with get_engine().connect() as con:
             row = con.execute(
-                text("SELECT id, request_type, record_id, proposed_data FROM modification_requests WHERE id = :id AND status = 'pending'"),
+                text(
+                    "SELECT mr.id, mr.request_type, mr.record_id, mr.user_id, mr.proposed_data, u.username AS requester_username "
+                    "FROM modification_requests mr JOIN users u ON u.id = mr.user_id WHERE mr.id = :id AND mr.status = 'pending'"
+                ),
                 {"id": req_id},
             ).mappings().first()
         if not row:
             return redirect(url_for("admin"))
         data = json.loads(row["proposed_data"])
+        requester = row.get("requester_username") or "?"
         with get_engine().begin() as con:
+            if row["request_type"] == "new_patient":
+                pt = get_metadata().tables["patients"]
+                patient_columns = {c.name for c in pt.c if c.name not in ("id", "created_at")}
+                row_clean = {k: v for k, v in data.items() if k in patient_columns}
+                r = con.execute(pt.insert().returning(pt.c.id), row_clean)
+                new_patient_id = r.scalar_one()
+                con.execute(
+                    text(
+                        "UPDATE modification_requests SET status = 'accepted', reviewed_at = :now, reviewed_by = :by WHERE id = :id"
+                    ),
+                    {"id": req_id, "now": datetime.now(timezone.utc), "by": session.get("user_id")},
+                )
+                _log_action(
+                    session.get("user_id"),
+                    session.get("username") or "?",
+                    "new_patient_accepted",
+                    "patient",
+                    new_patient_id,
+                    f"Demandé par {requester}: {data.get('last_name')} {data.get('first_name')}",
+                )
+                return redirect(url_for("admin") + "?modification_accepted=1")
             if row["request_type"] == "patient":
                 con.execute(
                     text(
@@ -1066,6 +1162,14 @@ def create_app() -> Flask:
                         "ifin": data.get("identifiant_final"),
                     },
                 )
+                _log_action(
+                    session.get("user_id"),
+                    session.get("username") or "?",
+                    "modification_accepted",
+                    "patient",
+                    row["record_id"],
+                    f"Modification patient (demandée par {requester})",
+                )
             else:
                 con.execute(
                     text(
@@ -1079,6 +1183,14 @@ def create_app() -> Flask:
                         "mr": data.get("montant_recu"),
                     },
                 )
+                _log_action(
+                    session.get("user_id"),
+                    session.get("username") or "?",
+                    "modification_accepted",
+                    "consultation",
+                    row["record_id"],
+                    f"Modification consultation (demandée par {requester})",
+                )
             con.execute(
                 text(
                     "UPDATE modification_requests SET status = 'accepted', reviewed_at = :now, reviewed_by = :by WHERE id = :id"
@@ -1090,12 +1202,34 @@ def create_app() -> Flask:
     @app.post("/admin/modification-requests/<int:req_id>/reject")
     @admin_required
     def admin_reject_modification(req_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT mr.request_type, mr.proposed_data, u.username FROM modification_requests mr JOIN users u ON u.id = mr.user_id WHERE mr.id = :id"
+                ),
+                {"id": req_id},
+            ).mappings().first()
         with get_engine().begin() as con:
             con.execute(
                 text(
                     "UPDATE modification_requests SET status = 'rejected', reviewed_at = :now, reviewed_by = :by WHERE id = :id"
                 ),
                 {"id": req_id, "now": datetime.now(timezone.utc), "by": session.get("user_id")},
+            )
+        if row:
+            try:
+                d = json.loads(row["proposed_data"] or "{}")
+                summary = f"{d.get('last_name', '')} {d.get('first_name', '')}".strip() or row.get("username", "?")
+            except Exception:
+                summary = row.get("username", "?")
+            action_name = "new_patient_rejected" if row.get("request_type") == "new_patient" else "modification_rejected"
+            _log_action(
+                session.get("user_id"),
+                session.get("username") or "?",
+                action_name,
+                "modification_request",
+                req_id,
+                f"Demandé par {row.get('username', '?')}: {summary}"[:500],
             )
         return redirect(url_for("admin") + "?modification_rejected=1")
 
@@ -1234,13 +1368,53 @@ def get_metadata() -> MetaData:
         Column("reviewed_by", Integer, nullable=True),
     )
 
+    action_log = Table(
+        "action_log",
+        md,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("user_id", Integer, nullable=True),
+        Column("username", String(80), nullable=False),
+        Column("action", String(80), nullable=False),
+        Column("entity_type", String(30), nullable=True),
+        Column("entity_id", Integer, nullable=True),
+        Column("details", String(500), nullable=True),
+        Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+
     Index("idx_patients_name", patients.c.last_name, patients.c.first_name)
     Index("idx_patients_phone", patients.c.phone)
     Index("idx_patients_matricule", patients.c.matricule)
     Index("idx_patients_ident_final", patients.c.identifiant_final)
     Index("idx_consultations_patient_date", consultations.c.patient_id, consultations.c.consultation_date)
+    Index("idx_action_log_created_at", action_log.c.created_at)
 
     return md
+
+
+def _log_action(
+    user_id: int | None,
+    username: str,
+    action: str,
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    details: str | None = None,
+) -> None:
+    """Enregistre une action dans l'historique (sauf recherche)."""
+    with get_engine().begin() as con:
+        con.execute(
+            text(
+                "INSERT INTO action_log (user_id, username, action, entity_type, entity_id, details) "
+                "VALUES (:uid, :uname, :act, :etype, :eid, :details)"
+            ),
+            {
+                "uid": user_id,
+                "uname": username or "?",
+                "act": action,
+                "etype": entity_type,
+                "eid": entity_id,
+                "details": details[:500] if details else None,
+            },
+        )
 
 
 def init_db(force_reset: bool = False) -> None:

@@ -8,6 +8,12 @@
       <a class="btn btn--ghost" href="{{ url_for('index') }}">Recherche</a>
     </div>
 
+    {% if not is_admin %}
+      <p class="muted">Votre demande sera soumise à un administrateur pour validation avant d'être enregistrée.</p>
+    {% endif %}
+    {% if request.args.get('msg') == 'patient-en-attente' %}
+      <div class="alert muted" style="border-color: var(--border);">Votre demande d'ajout a été enregistrée. Un administrateur doit l'accepter pour que le patient soit créé.</div>
+    {% endif %}
     {% if error %}
       <div class="alert alert--error">{{ error }}</div>
     {% endif %}
@@ -111,7 +117,7 @@
       </div>
 
       <div class="form__actions">
-        <button class="btn" type="submit">Enregistrer le patient</button>
+        <button class="btn" type="submit">{% if is_admin %}Enregistrer le patient{% else %}Proposer l'ajout (en attente de validation){% endif %}</button>
         <a class="btn btn--ghost" href="{{ url_for('index') }}">Annuler</a>
       </div>
     </form>
