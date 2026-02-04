@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% set title = "Confirmation d'inscription" %}
+
+{% block content %}
+  <section class="card" style="max-width: 420px; margin: 40px auto;">
+    {% if success %}
+      <h1>Inscription confirmée</h1>
+      <p>Votre compte est en attente d'acceptation par un administrateur. Vous pourrez vous connecter une fois qu'il aura été accepté.</p>
+    {% else %}
+      <h1>Erreur</h1>
+      <div class="alert alert--error">{{ error }}</div>
+    {% endif %}
+    <p style="margin-top: 16px;">
+      <a class="btn" href="{{ url_for('login') }}">Retour à la connexion</a>
+    </p>
+  </section>
+{% endblock %}

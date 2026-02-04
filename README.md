@@ -48,6 +48,55 @@ python app.py
 
 > Important: évite de mettre le mot de passe “en dur” dans le code. Utilise un secret/variable d’environnement sur AWS.
 
+**Confirmation par email** : pour les demandes d'accès, l'app envoie un email de confirmation (lien valable 24 h). Voir la section [Configurer l'envoi d'emails](#configurer-lenvoi-demails) ci-dessous. Sans config (ex. en local), la page affiche le lien à cliquer en mode dev.
+
+### Configurer l'envoi d'emails
+
+Pour que les demandes d'accès déclenchent un vrai email de confirmation, définis ces **variables d'environnement** :
+
+| Variable        | Description                          | Exemple                    |
+|----------------|--------------------------------------|----------------------------|
+| `MAIL_SERVER`  | Serveur SMTP                         | `smtp.gmail.com`           |
+| `MAIL_PORT`    | Port (souvent 587 avec TLS)          | `587`                      |
+| `MAIL_USE_TLS` | Activer TLS                          | `true`                     |
+| `MAIL_USERNAME`| Identifiant SMTP                     | ton adresse ou login       |
+| `MAIL_PASSWORD`| Mot de passe SMTP                    | mot de passe ou "App Password" |
+| `MAIL_FROM`    | Adresse expéditrice affichée         | `noreply@mondomaine.com`   |
+
+**Que utiliser comme serveur mail ?**
+
+- **Gmail** (simple pour tester)  
+  - `MAIL_SERVER=smtp.gmail.com`, `MAIL_PORT=587`, `MAIL_USE_TLS=true`  
+  - Utilise un **mot de passe d'application** (pas ton mot de passe Gmail) : [Compte Google](https://myaccount.google.com/) → Sécurité → Validation en 2 étapes activée → Mots de passe des applications → Générer.  
+  - `MAIL_USERNAME` = ton adresse Gmail, `MAIL_PASSWORD` = le mot de passe d'application.
+
+- **SendGrid** (gratuit jusqu'à ~100 emails/jour)  
+  - Créer un compte sur [sendgrid.com](https://sendgrid.com), puis créer une **clé API** (API Keys).  
+  - `MAIL_SERVER=smtp.sendgrid.net`, `MAIL_PORT=587`, `MAIL_USE_TLS=true`  
+  - `MAIL_USERNAME=apikey`, `MAIL_PASSWORD=ta_cle_api_sendgrid`, `MAIL_FROM=adresse_verifiee@mondomaine.com`.
+
+- **Brevo (ex Sendinblue)** (gratuit jusqu'à 300 emails/jour)  
+  - Compte sur [brevo.com](https://www.brevo.com), puis SMTP & API → Paramètres SMTP.  
+  - `MAIL_SERVER=smtp-relay.brevo.com`, `MAIL_PORT=587`, `MAIL_USE_TLS=true`  
+  - `MAIL_USERNAME` = ton email de connexion Brevo, `MAIL_PASSWORD` = clé SMTP (générée dans le compte).
+
+- **Mailjet, Amazon SES, OVH…**  
+  - Même principe : récupère serveur SMTP, port, identifiant et mot de passe dans la doc du fournisseur, puis remplis les variables ci-dessus.
+
+**Exemple (PowerShell, Gmail)** :
+
+```powershell
+$env:MAIL_SERVER = "smtp.gmail.com"
+$env:MAIL_PORT = "587"
+$env:MAIL_USE_TLS = "true"
+$env:MAIL_USERNAME = "ton.email@gmail.com"
+$env:MAIL_PASSWORD = "ton_mot_de_passe_application"
+$env:MAIL_FROM = "ton.email@gmail.com"
+python app.py
+```
+
+En production (Render, Railway, etc.), ajoute ces variables dans les **Environment** / **Variables** du projet ; ne mets jamais le mot de passe dans le code. Un fichier **`.env.example`** à la racine du projet liste toutes les variables possibles (copier et renommer en `.env` puis remplir, ou s'en inspirer pour définir les variables à la main).
+
 ### Alternatives plus simples qu'AWS (BD hébergée en quelques clics)
 
 Si tu veux **héberger ta base PostgreSQL** sans gérer EC2, VPC ou groupes de sécurité, ces services donnent une **URL de connexion** (`DATABASE_URL`) en quelques minutes :

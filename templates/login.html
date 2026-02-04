@@ -4,7 +4,11 @@
 {% block content %}
   <section class="card" style="max-width: 360px; margin: 40px auto;">
     <h1>Connexion</h1>
-    {% if error %}
+    {% if request.args.get('msg') == 'compte-en-attente' %}
+      <div class="alert muted" style="border-color: var(--border);">Votre demande a été enregistrée. Un administrateur doit accepter votre compte avant que vous puissiez vous connecter.</div>
+    {% elif request.args.get('msg') == 'premier-compte-admin' %}
+      <div class="alert muted" style="border-color: var(--border);">Premier compte créé. Vous pouvez vous connecter (compte administrateur).</div>
+    {% elif error %}
       <div class="alert alert--error">{{ error }}</div>
     {% endif %}
     <form class="form" method="post" action="{{ url_for('login_post') }}">
@@ -21,8 +25,6 @@
         <button class="btn" type="submit">Se connecter</button>
       </div>
     </form>
-    <p class="muted" style="margin-top: 16px;">
-      Pas de compte ? <a href="{{ url_for('register') }}">S'inscrire</a>
-    </p>
+    <p class="muted" style="margin-top: 16px;">Pas encore de compte ? <a href="{{ url_for('register') }}">Demander un accès</a></p>
   </section>
 {% endblock %}

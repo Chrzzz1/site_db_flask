@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
+import secrets
+import smtplib
+from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -85,6 +89,42 @@ def _parse_date_parts(date_str: str) -> tuple[str, str, str]:
     return (d.lstrip("0") or "1", m.lstrip("0") or "1", y)
 
 
+def _send_confirmation_email(to_email: str, confirm_url: str) -> bool:
+    """Envoie l'email de confirmation d'inscription. Retourne True si envoyé, False sinon."""
+    server = os.environ.get("MAIL_SERVER", "").strip()
+    if not server:
+        return False
+    port = int(os.environ.get("MAIL_PORT", "587"))
+    use_tls = os.environ.get("MAIL_USE_TLS", "true").lower() in ("1", "true", "yes")
+    username = os.environ.get("MAIL_USERNAME", "").strip()
+    password = os.environ.get("MAIL_PASSWORD", "")
+    from_addr = os.environ.get("MAIL_FROM", username or "noreply@example.com").strip()
+    subject = "Confirmez votre demande d'accès"
+    body_text = (
+        "Bonjour,\n\n"
+        "Vous avez demandé un accès à l'application.\n\n"
+        "Cliquez sur le lien suivant pour confirmer votre inscription "
+        "(ce lien est valable 24 heures) :\n\n"
+        f"{confirm_url}\n\n"
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.\n"
+    )
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to_email
+    msg.attach(MIMEText(body_text, "plain", "utf-8"))
+    try:
+        with smtplib.SMTP(server, port, timeout=10) as smtp:
+            if use_tls:
+                smtp.starttls()
+            if username and password:
+                smtp.login(username, password)
+            smtp.sendmail(from_addr, [to_email], msg.as_string())
+        return True
+    except Exception:
+        return False
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
@@ -131,13 +171,18 @@ def create_app() -> Flask:
         users_t = md.tables["users"]
         with get_engine().connect() as con:
             row = con.execute(
-                text("SELECT id, password_hash, is_admin FROM users WHERE username = :u"),
+                text("SELECT id, password_hash, is_admin, is_approved FROM users WHERE username = :u"),
                 {"u": username},
             ).mappings().first()
         if not row:
             return render_template("login.html", error="Identifiant ou mot de passe incorrect.")
         if not check_password_hash(row["password_hash"], password):
             return render_template("login.html", error="Identifiant ou mot de passe incorrect.")
+        if not row["is_approved"]:
+            return render_template(
+                "login.html",
+                error="Votre compte n'a pas encore été accepté par un administrateur.",
+            )
         session.clear()
         session["user_id"] = row["id"]
         session["username"] = username
@@ -148,40 +193,162 @@ def create_app() -> Flask:
     def register():
         if session.get("user_id"):
             return redirect(url_for("index"))
-        return render_template("register.html", error="")
+        if session.get("is_admin"):
+            return redirect(url_for("admin"))
+        return render_template("register.html", error="", request_account=True)
 
     @app.post("/register")
     def register_post():
+        from urllib.parse import quote
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
         password2 = request.form.get("password2") or ""
-        if not username or not password:
-            return render_template("register.html", error="Identifiant et mot de passe requis.")
-        if len(username) < 2:
-            return render_template("register.html", error="L'identifiant doit faire au moins 2 caractères.")
-        if len(password) < 6:
-            return render_template("register.html", error="Le mot de passe doit faire au moins 6 caractères.")
-        if password != password2:
-            return render_template("register.html", error="Les deux mots de passe ne correspondent pas.")
+        is_admin_form = request.form.get("is_admin") == "on"
         engine = get_engine()
         md = get_metadata()
         users_t = md.tables["users"]
+
+        if session.get("is_admin"):
+            # Création de compte par l'admin : compte approuvé d'office
+            def admin_redirect(err: str):
+                return redirect(url_for("admin") + "?create_error=" + quote(err))
+            if not username or not password:
+                return admin_redirect("Identifiant et mot de passe requis.")
+            if len(username) < 2:
+                return admin_redirect("L'identifiant doit faire au moins 2 caractères.")
+            if len(password) < 6:
+                return admin_redirect("Le mot de passe doit faire au moins 6 caractères.")
+            if password != password2:
+                return admin_redirect("Les deux mots de passe ne correspondent pas.")
+            with engine.connect() as con:
+                exists = con.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": username}).scalar()
+                if exists:
+                    return admin_redirect("Cet identifiant est déjà pris.")
+            with engine.begin() as con:
+                con.execute(
+                    users_t.insert(),
+                    {
+                        "username": username,
+                        "password_hash": generate_password_hash(password),
+                        "is_admin": is_admin_form,
+                        "is_approved": True,
+                    },
+                )
+            return redirect(url_for("admin") + "?created=1")
+
+        # Inscription publique : envoi d'un email de confirmation, puis création du compte au clic sur le lien
+        email = (request.form.get("email") or "").strip().lower()
+        if not username or not password:
+            return render_template("register.html", error="Identifiant, email et mot de passe requis.", request_account=True)
+        if len(username) < 2:
+            return render_template("register.html", error="L'identifiant doit faire au moins 2 caractères.", request_account=True)
+        if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+            return render_template("register.html", error="Adresse email invalide.", request_account=True)
+        if len(password) < 6:
+            return render_template("register.html", error="Le mot de passe doit faire au moins 6 caractères.", request_account=True)
+        if password != password2:
+            return render_template("register.html", error="Les deux mots de passe ne correspondent pas.", request_account=True)
         with engine.connect() as con:
             exists = con.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": username}).scalar()
             if exists:
-                return render_template("register.html", error="Cet identifiant est déjà pris.")
+                return render_template("register.html", error="Cet identifiant est déjà pris.", request_account=True)
+            exists_pending = con.execute(
+                text("SELECT 1 FROM pending_confirmations WHERE username = :u OR email = :e"),
+                {"u": username, "e": email},
+            ).scalar()
+            if exists_pending:
+                return render_template(
+                    "register.html",
+                    error="Une demande est déjà en attente pour cet identifiant ou cette adresse email. Vérifiez vos emails ou réessayez plus tard.",
+                    request_account=True,
+                )
             count = con.execute(text("SELECT COUNT(*) FROM users")).scalar_one()
-            is_admin = int(count) == 0
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        pending_t = md.tables["pending_confirmations"]
+        with engine.begin() as con:
+            con.execute(
+                pending_t.insert(),
+                {
+                    "email": email,
+                    "username": username,
+                    "password_hash": generate_password_hash(password),
+                    "token": token,
+                    "expires_at": expires_at,
+                },
+            )
+        confirm_url = request.url_root.rstrip("/") + url_for("confirm_email", token=token)
+        email_sent = _send_confirmation_email(email, confirm_url)
+        if email_sent:
+            return redirect(url_for("confirm_email_sent") + "?email=" + quote(email, safe=""))
+        # Mode dev : pas d'email configuré, afficher le lien sur une page
+        return redirect(url_for("confirm_email_sent", token=token, dev="1"))
+
+    @app.get("/register/confirm-sent")
+    def confirm_email_sent():
+        """Page après envoi de la demande : email envoyé ou (en dev) lien de confirmation affiché."""
+        email = request.args.get("email", "")
+        token = request.args.get("token", "")
+        dev = request.args.get("dev") == "1"
+        return render_template(
+            "confirm_email_sent.html",
+            email=email,
+            token=token,
+            dev=dev,
+            confirm_url=url_for("confirm_email", token=token) if token else "",
+        )
+
+    @app.get("/confirm-email")
+    def confirm_email():
+        """Confirmation d'inscription via le lien reçu par email."""
+        token = (request.args.get("token") or "").strip()
+        if not token:
+            return render_template("confirm_email_result.html", success=False, error="Lien invalide.")
+        engine = get_engine()
+        md = get_metadata()
+        users_t = md.tables["users"]
+        pending_t = md.tables["pending_confirmations"]
+        with engine.connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT id, email, username, password_hash FROM pending_confirmations "
+                    "WHERE token = :t AND expires_at > :now"
+                ),
+                {"t": token, "now": datetime.now(timezone.utc)},
+            ).mappings().first()
+        if not row:
+            with engine.connect() as con:
+                exists = con.execute(
+                    text("SELECT 1 FROM pending_confirmations WHERE token = :t"),
+                    {"t": token},
+                ).scalar()
+            if exists:
+                return render_template("confirm_email_result.html", success=False, error="Ce lien a expiré.")
+            return render_template("confirm_email_result.html", success=False, error="Lien invalide.")
+        with engine.connect() as con:
+            user_exists = con.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": row["username"]}).scalar()
+        if user_exists:
+            with engine.begin() as con:
+                con.execute(text("DELETE FROM pending_confirmations WHERE token = :t"), {"t": token})
+            return render_template("confirm_email_result.html", success=False, error="Ce compte existe déjà.")
+        count = 0
+        with engine.connect() as con:
+            count = con.execute(text("SELECT COUNT(*) FROM users")).scalar_one()
+        is_first = count == 0
         with engine.begin() as con:
             con.execute(
                 users_t.insert(),
                 {
-                    "username": username,
-                    "password_hash": generate_password_hash(password),
-                    "is_admin": is_admin,
+                    "username": row["username"],
+                    "password_hash": row["password_hash"],
+                    "is_admin": is_first,
+                    "is_approved": is_first,
                 },
             )
-        return redirect(url_for("login"))
+            con.execute(text("DELETE FROM pending_confirmations WHERE token = :t"), {"t": token})
+        if is_first:
+            return redirect(url_for("login") + "?msg=premier-compte-admin")
+        return redirect(url_for("login") + "?msg=compte-en-attente")
 
     @app.get("/logout")
     def logout():
@@ -605,7 +772,7 @@ def create_app() -> Flask:
                 )
             ).mappings().all()
             users = con.execute(
-                text("SELECT id, username, is_admin FROM users ORDER BY id")
+                text("SELECT id, username, is_admin, is_approved FROM users ORDER BY id")
             ).mappings().all()
         return render_template(
             "admin.html",
@@ -674,6 +841,13 @@ def create_app() -> Flask:
         with get_engine().begin() as con:
             con.execute(text("UPDATE users SET is_admin = 0 WHERE id = :id"), {"id": user_id})
         return redirect(url_for("admin"))
+
+    @app.post("/admin/users/<int:user_id>/approve")
+    @admin_required
+    def admin_approve_user(user_id: int):
+        with get_engine().begin() as con:
+            con.execute(text("UPDATE users SET is_approved = :ok WHERE id = :id"), {"ok": True, "id": user_id})
+        return redirect(url_for("admin") + "?approved=1")
 
     @app.post("/admin/users/<int:user_id>/delete")
     @admin_required
@@ -775,6 +949,19 @@ def get_metadata() -> MetaData:
         Column("username", String(80), unique=True, nullable=False),
         Column("password_hash", String(255), nullable=False),
         Column("is_admin", Boolean, nullable=False),
+        Column("is_approved", Boolean, nullable=False),
+        Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+
+    pending_confirmations = Table(
+        "pending_confirmations",
+        md,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("email", String(255), nullable=False),
+        Column("username", String(80), nullable=False),
+        Column("password_hash", String(255), nullable=False),
+        Column("token", String(64), unique=True, nullable=False),
+        Column("expires_at", DateTime(timezone=True), nullable=False),
         Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
     )
 
@@ -793,6 +980,19 @@ def init_db(force_reset: bool = False) -> None:
     if force_reset:
         md.drop_all(engine, checkfirst=True)
     md.create_all(engine, checkfirst=True)
+
+    # Migration: ajouter is_approved si la table users existe déjà sans cette colonne
+    with engine.connect() as con:
+        try:
+            con.execute(text("SELECT is_approved FROM users LIMIT 1"))
+        except Exception:
+            try:
+                con.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN"))
+                con.commit()
+            except Exception:
+                pass
+            with engine.begin() as c2:
+                c2.execute(text("UPDATE users SET is_approved = :v WHERE is_approved IS NULL"), {"v": True})
 
     with engine.begin() as con:
         count = int(con.execute(text("SELECT COUNT(*) FROM patients")).scalar_one())

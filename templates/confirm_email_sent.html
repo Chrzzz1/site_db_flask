@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set title = "Email de confirmation" %}
+
+{% block content %}
+  <section class="card" style="max-width: 420px; margin: 40px auto;">
+    <h1>Demande enregistrée</h1>
+    {% if dev and confirm_url %}
+      <div class="alert muted" style="border-color: var(--border);">
+        <p><strong>Mode développement</strong> : l'envoi d'email n'est pas configuré.</p>
+        <p>Cliquez sur le lien ci-dessous pour confirmer votre inscription :</p>
+        <p style="margin-top: 12px; word-break: break-all;">
+          <a href="{{ request.url_root.rstrip('/') }}{{ confirm_url }}">{{ request.url_root.rstrip('/') }}{{ confirm_url }}</a>
+        </p>
+      </div>
+    {% else %}
+      <p>Un email de confirmation a été envoyé à <strong>{{ email }}</strong>.</p>
+      <p class="muted">Cliquez sur le lien dans l'email pour confirmer votre inscription (lien valable 24 heures). Ensuite, un administrateur devra accepter votre compte.</p>
+    {% endif %}
+    <p style="margin-top: 16px;">
+      <a class="btn" href="{{ url_for('login') }}">Retour à la connexion</a>
+    </p>
+  </section>
+{% endblock %}

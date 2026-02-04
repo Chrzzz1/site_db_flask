@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% set title = "Inscription" %}
+{% set title = "Demander un compte" %}
 
 {% block content %}
   <section class="card" style="max-width: 360px; margin: 40px auto;">
-    <h1>Inscription</h1>
+    <h1>Demander un compte</h1>
+    <p class="muted">Un email de confirmation vous sera envoyé. Après avoir cliqué sur le lien, votre compte sera en attente d'acceptation par un administrateur.</p>
     {% if error %}
       <div class="alert alert--error">{{ error }}</div>
     {% endif %}
@@ -11,6 +12,10 @@
       <div class="form__row">
         <label class="label" for="username">Identifiant</label>
         <input class="input" id="username" name="username" required autofocus autocomplete="username" minlength="2" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="email">Adresse email</label>
+        <input class="input" id="email" name="email" type="email" required autocomplete="email" placeholder="vous@exemple.fr" />
       </div>
       <div class="form__row">
         <label class="label" for="password">Mot de passe</label>
@@ -21,7 +26,7 @@
         <input class="input" id="password2" name="password2" type="password" required autocomplete="new-password" />
       </div>
       <div class="form__actions">
-        <button class="btn" type="submit">Créer mon compte</button>
+        <button class="btn" type="submit">Envoyer la demande</button>
       </div>
     </form>
     <p class="muted" style="margin-top: 16px;">
