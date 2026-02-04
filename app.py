@@ -1083,18 +1083,18 @@ def create_app() -> Flask:
     @admin_required
     def admin_set_admin(user_id: int):
         with get_engine().begin() as con:
-            con.execute(text("UPDATE users SET is_admin = 1 WHERE id = :id"), {"id": user_id})
+            con.execute(text("UPDATE users SET is_admin = :val WHERE id = :id"), {"val": True, "id": user_id})
         return redirect(url_for("admin"))
 
     @app.post("/admin/users/<int:user_id>/remove-admin")
     @admin_required
     def admin_remove_admin(user_id: int):
         with get_engine().connect() as con:
-            count = con.execute(text("SELECT COUNT(*) FROM users WHERE is_admin = 1")).scalar_one()
+            count = con.execute(text("SELECT COUNT(*) FROM users WHERE is_admin = :v"), {"v": True}).scalar_one()
         if count <= 1:
             return redirect(url_for("admin") + "?error=impossible-retirer-dernier-admin")
         with get_engine().begin() as con:
-            con.execute(text("UPDATE users SET is_admin = 0 WHERE id = :id"), {"id": user_id})
+            con.execute(text("UPDATE users SET is_admin = :val WHERE id = :id"), {"val": False, "id": user_id})
         return redirect(url_for("admin"))
 
     @app.post("/admin/users/<int:user_id>/approve")

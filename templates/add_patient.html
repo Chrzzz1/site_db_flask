@@ -30,34 +30,33 @@
         </div>
       </div>
 
-      <div class="form__grid">
-        <div class="form__row">
-          <label class="label">Date de naissance</label>
-          <div class="date-selects">
-            <select class="input input--small" name="date_day" id="date_day" aria-label="Jour">
-              <option value="">Jour</option>
-              {% for d in range(1, 32) %}
-                <option value="{{ d }}" {% if (date_day or '') == d|string %}selected{% endif %}>{{ d }}</option>
-              {% endfor %}
-            </select>
-            <select class="input input--small" name="date_month" id="date_month" aria-label="Mois">
-              <option value="">Mois</option>
-              {% for m in range(1, 13) %}
-                <option value="{{ m }}" {% if (date_month or '') == m|string %}selected{% endif %}>{{ m }}</option>
-              {% endfor %}
-            </select>
-            <select class="input input--small" name="date_year" id="date_year" aria-label="Année">
-              <option value="">Année</option>
-              {% for y in range(2026, 1920, -1) %}
-                <option value="{{ y }}" {% if (date_year or '') == y|string %}selected{% endif %}>{{ y }}</option>
-              {% endfor %}
-            </select>
-          </div>
+      <div class="form__row">
+        <label class="label">Date de naissance</label>
+        <div class="date-selects">
+          <select class="input input--small" name="date_day" id="date_day" aria-label="Jour">
+            <option value="">Jour</option>
+            {% for d in range(1, 32) %}
+              <option value="{{ d }}" {% if (date_day or '') == d|string %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+          <select class="input input--small" name="date_month" id="date_month" aria-label="Mois">
+            <option value="">Mois</option>
+            {% for m in range(1, 13) %}
+              <option value="{{ m }}" {% if (date_month or '') == m|string %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+          <select class="input input--small" name="date_year" id="date_year" aria-label="Année">
+            <option value="">Année</option>
+            {% for y in range(2026, 1920, -1) %}
+              <option value="{{ y }}" {% if (date_year or '') == y|string %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+          </select>
         </div>
-        <div class="form__row">
-          <label class="label" for="profession">Profession</label>
-          <input class="input" id="profession" name="profession" value="{{ profession or '' }}" />
-        </div>
+      </div>
+
+      <div class="form__row">
+        <label class="label" for="profession">Profession</label>
+        <input class="input" id="profession" name="profession" value="{{ profession or '' }}" style="max-width: 100%;" />
       </div>
 
       <div class="form__grid">
@@ -91,19 +90,9 @@
         </div>
       </div>
 
-      <div class="form__grid">
-        <div class="form__row">
-          <label class="label" for="identifiant_1">Identifiant 1</label>
-          <input class="input" id="identifiant_1" name="identifiant_1" value="{{ identifiant_1 or '' }}" />
-        </div>
-        <div class="form__row">
-          <label class="label" for="identifiant_2">Identifiant 2</label>
-          <input class="input" id="identifiant_2" name="identifiant_2" value="{{ identifiant_2 or '' }}" />
-        </div>
-        <div class="form__row">
-          <label class="label" for="identifiant_final">Identifiant final</label>
-          <input class="input" id="identifiant_final" name="identifiant_final" value="{{ identifiant_final or '' }}" />
-        </div>
+      <div class="form__row">
+        <label class="label" for="identifiant_final">Identifiant final</label>
+        <input class="input" id="identifiant_final" name="identifiant_final" value="{{ identifiant_final or '' }}" />
       </div>
 
       <h2>Fiches (optionnel)</h2>
