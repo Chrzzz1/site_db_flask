@@ -144,6 +144,8 @@ a:hover { text-decoration: underline; }
   color: #fff;
 }
 .btn--danger:hover { filter: brightness(0.95); }
+.btn--small { padding: 6px 10px; font-size: 12px; }
+.nav__user { font-size: 13px; padding: 0 8px; }
 .btn--icon { padding: 8px 12px; min-width: 2.5rem; }
 .theme-icon { font-size: 1.15rem; line-height: 1; }
 .theme-icon--moon { display: none; }

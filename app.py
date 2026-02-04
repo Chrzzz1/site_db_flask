@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+import pandas as pd
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -21,6 +25,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.engine import Engine
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -82,11 +87,109 @@ def _parse_date_parts(date_str: str) -> tuple[str, str, str]:
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
 
+    def login_required(f):
+        from functools import wraps
+        @wraps(f)
+        def _inner(*args, **kwargs):
+            if "user_id" not in session:
+                return redirect(url_for("login", next=request.url))
+            return f(*args, **kwargs)
+        return _inner
+
+    def admin_required(f):
+        from functools import wraps
+        @wraps(f)
+        def _inner(*args, **kwargs):
+            if "user_id" not in session:
+                return redirect(url_for("login", next=request.url))
+            if not session.get("is_admin"):
+                return redirect(url_for("index"))
+            return f(*args, **kwargs)
+        return _inner
+
+    @app.get("/login")
+    def login():
+        if session.get("user_id"):
+            return redirect(url_for("index"))
+        return render_template("login.html", error="")
+
+    @app.post("/login")
+    def login_post():
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        next_url = request.form.get("next") or request.args.get("next") or url_for("index")
+        if not (next_url.startswith("/") and "//" not in next_url[1:]):
+            next_url = url_for("index")
+        if not username or not password:
+            return render_template("login.html", error="Identifiant et mot de passe requis.")
+        md = get_metadata()
+        users_t = md.tables["users"]
+        with get_engine().connect() as con:
+            row = con.execute(
+                text("SELECT id, password_hash, is_admin FROM users WHERE username = :u"),
+                {"u": username},
+            ).mappings().first()
+        if not row:
+            return render_template("login.html", error="Identifiant ou mot de passe incorrect.")
+        if not check_password_hash(row["password_hash"], password):
+            return render_template("login.html", error="Identifiant ou mot de passe incorrect.")
+        session.clear()
+        session["user_id"] = row["id"]
+        session["username"] = username
+        session["is_admin"] = bool(row["is_admin"])
+        return redirect(next_url)
+
+    @app.get("/register")
+    def register():
+        if session.get("user_id"):
+            return redirect(url_for("index"))
+        return render_template("register.html", error="")
+
+    @app.post("/register")
+    def register_post():
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        password2 = request.form.get("password2") or ""
+        if not username or not password:
+            return render_template("register.html", error="Identifiant et mot de passe requis.")
+        if len(username) < 2:
+            return render_template("register.html", error="L'identifiant doit faire au moins 2 caractères.")
+        if len(password) < 6:
+            return render_template("register.html", error="Le mot de passe doit faire au moins 6 caractères.")
+        if password != password2:
+            return render_template("register.html", error="Les deux mots de passe ne correspondent pas.")
+        engine = get_engine()
+        md = get_metadata()
+        users_t = md.tables["users"]
+        with engine.connect() as con:
+            exists = con.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": username}).scalar()
+            if exists:
+                return render_template("register.html", error="Cet identifiant est déjà pris.")
+            count = con.execute(text("SELECT COUNT(*) FROM users")).scalar_one()
+            is_admin = int(count) == 0
+        with engine.begin() as con:
+            con.execute(
+                users_t.insert(),
+                {
+                    "username": username,
+                    "password_hash": generate_password_hash(password),
+                    "is_admin": is_admin,
+                },
+            )
+        return redirect(url_for("login"))
+
+    @app.get("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
     @app.get("/")
+    @login_required
     def index() -> str:
         last_name = (request.args.get("last_name") or "").strip()
         first_name = (request.args.get("first_name") or "").strip()
@@ -215,6 +318,7 @@ def create_app() -> Flask:
         )
 
     @app.get("/patients/<int:patient_id>")
+    @login_required
     def patient_detail(patient_id: int) -> str:
         error = (request.args.get("error") or "").strip()
         with get_engine().connect() as con:
@@ -343,6 +447,7 @@ def create_app() -> Flask:
         return redirect(url_for("patient_detail", patient_id=patient_id))
 
     @app.get("/patients/new")
+    @login_required
     def add_patient_form() -> str:
         return render_template(
             "add_patient.html",
@@ -414,6 +519,7 @@ def create_app() -> Flask:
         return redirect(url_for("patient_detail", patient_id=patient_id))
 
     @app.get("/api/patients")
+    @login_required
     def api_patients():
         last_name = (request.args.get("last_name") or "").strip()
         first_name = (request.args.get("first_name") or "").strip()
@@ -478,7 +584,116 @@ def create_app() -> Flask:
             rows = [dict(r) for r in res.mappings().all()]
         return jsonify({"count": len(rows), "rows": rows})
 
+    @app.get("/admin")
+    @admin_required
+    def admin():
+        with get_engine().connect() as con:
+            patients = con.execute(
+                text(
+                    "SELECT id, last_name, first_name, date_of_birth, phone, matricule FROM patients ORDER BY id DESC LIMIT 200"
+                )
+            ).mappings().all()
+            consultations = con.execute(
+                text(
+                    """
+                    SELECT c.id, c.patient_id, c.consultation_date, c.consultation_detail, c.montant_acte,
+                           p.last_name, p.first_name
+                    FROM consultations c
+                    JOIN patients p ON p.id = c.patient_id
+                    ORDER BY c.id DESC LIMIT 100
+                    """
+                )
+            ).mappings().all()
+            users = con.execute(
+                text("SELECT id, username, is_admin FROM users ORDER BY id")
+            ).mappings().all()
+        return render_template(
+            "admin.html",
+            patients=[dict(r) for r in patients],
+            consultations=[dict(r) for r in consultations],
+            users=[dict(r) for r in users],
+            current_user_id=session.get("user_id"),
+        )
+
+    @app.get("/admin/export-excel", endpoint="admin_export_excel")
+    @admin_required
+    def admin_export_excel():
+        engine = get_engine()
+        with engine.connect() as con:
+            df_patients = pd.read_sql(text("SELECT * FROM patients ORDER BY id"), con)
+            df_consultations = pd.read_sql(text("SELECT * FROM consultations ORDER BY id"), con)
+        for df in (df_patients, df_consultations):
+            for col in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    df[col] = df[col].astype(str)
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_patients.to_excel(writer, sheet_name="Patients", index=False)
+            df_consultations.to_excel(writer, sheet_name="Consultations", index=False)
+        data = buffer.getvalue()
+        filename = f"export_patients_{datetime.now().strftime('%Y-%m-%d_%H%M')}.xlsx"
+        return Response(
+            data,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(data)),
+            },
+        )
+
+    @app.post("/admin/patients/<int:patient_id>/delete")
+    @admin_required
+    def admin_delete_patient(patient_id: int):
+        md = get_metadata()
+        with get_engine().begin() as con:
+            con.execute(text("DELETE FROM consultations WHERE patient_id = :pid"), {"pid": patient_id})
+            con.execute(text("DELETE FROM patients WHERE id = :pid"), {"pid": patient_id})
+        return redirect(url_for("admin"))
+
+    @app.post("/admin/consultations/<int:consultation_id>/delete")
+    @admin_required
+    def admin_delete_consultation(consultation_id: int):
+        with get_engine().begin() as con:
+            con.execute(text("DELETE FROM consultations WHERE id = :cid"), {"cid": consultation_id})
+        return redirect(url_for("admin"))
+
+    @app.post("/admin/users/<int:user_id>/set-admin")
+    @admin_required
+    def admin_set_admin(user_id: int):
+        with get_engine().begin() as con:
+            con.execute(text("UPDATE users SET is_admin = 1 WHERE id = :id"), {"id": user_id})
+        return redirect(url_for("admin"))
+
+    @app.post("/admin/users/<int:user_id>/remove-admin")
+    @admin_required
+    def admin_remove_admin(user_id: int):
+        with get_engine().connect() as con:
+            count = con.execute(text("SELECT COUNT(*) FROM users WHERE is_admin = 1")).scalar_one()
+        if count <= 1:
+            return redirect(url_for("admin") + "?error=impossible-retirer-dernier-admin")
+        with get_engine().begin() as con:
+            con.execute(text("UPDATE users SET is_admin = 0 WHERE id = :id"), {"id": user_id})
+        return redirect(url_for("admin"))
+
+    @app.post("/admin/users/<int:user_id>/delete")
+    @admin_required
+    def admin_delete_user(user_id: int):
+        if user_id == session.get("user_id"):
+            return redirect(url_for("admin") + "?error=impossible-supprimer-votre-compte")
+        with get_engine().connect() as con:
+            row = con.execute(text("SELECT is_admin FROM users WHERE id = :id"), {"id": user_id}).mappings().first()
+            if not row:
+                return redirect(url_for("admin"))
+            if row["is_admin"]:
+                count = con.execute(text("SELECT COUNT(*) FROM users WHERE is_admin = :v"), {"v": True}).scalar_one()
+                if count <= 1:
+                    return redirect(url_for("admin") + "?error=impossible-supprimer-dernier-admin")
+        with get_engine().begin() as con:
+            con.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+        return redirect(url_for("admin"))
+
     @app.post("/reset-demo-data")
+    @admin_required
     def reset_demo_data():
         init_db(force_reset=True)
         return redirect(url_for("index"))
@@ -550,6 +765,16 @@ def get_metadata() -> MetaData:
         Column("consultation_detail", String(2000)),
         Column("montant_acte", Float),
         Column("montant_recu", Float),
+        Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+
+    users = Table(
+        "users",
+        md,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("username", String(80), unique=True, nullable=False),
+        Column("password_hash", String(255), nullable=False),
+        Column("is_admin", Boolean, nullable=False),
         Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
     )
 

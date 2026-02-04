@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% set title = "Connexion" %}
+
+{% block content %}
+  <section class="card" style="max-width: 360px; margin: 40px auto;">
+    <h1>Connexion</h1>
+    {% if error %}
+      <div class="alert alert--error">{{ error }}</div>
+    {% endif %}
+    <form class="form" method="post" action="{{ url_for('login_post') }}">
+      <input type="hidden" name="next" value="{{ request.args.get('next', '') }}" />
+      <div class="form__row">
+        <label class="label" for="username">Identifiant</label>
+        <input class="input" id="username" name="username" required autofocus autocomplete="username" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="password">Mot de passe</label>
+        <input class="input" id="password" name="password" type="password" required autocomplete="current-password" />
+      </div>
+      <div class="form__actions">
+        <button class="btn" type="submit">Se connecter</button>
+      </div>
+    </form>
+    <p class="muted" style="margin-top: 16px;">
+      Pas de compte ? <a href="{{ url_for('register') }}">S'inscrire</a>
+    </p>
+  </section>
+{% endblock %}
