@@ -410,7 +410,6 @@ def create_app() -> Flask:
                 p.matricule,
                 p.identifiant_1,
                 p.identifiant_2,
-                p.identifiant_final,
                 (
                     SELECT c.consultation_date
                     FROM consultations c
@@ -518,7 +517,6 @@ def create_app() -> Flask:
                         fiche_6, fiche_7, fiche_8, fiche_9, fiche_10,
                         identifiant_1,
                         identifiant_2,
-                        identifiant_final,
                         created_at
                     FROM patients
                     WHERE id = :patient_id
@@ -638,7 +636,7 @@ def create_app() -> Flask:
                 text(
                     "SELECT id, last_name, first_name, date_of_birth, profession, phone, other_phone_1, other_phone_2, "
                     "address, insurance, matricule, fiche_1, fiche_2, fiche_3, fiche_4, fiche_5, fiche_6, fiche_7, "
-                    "fiche_8, fiche_9, fiche_10, identifiant_1, identifiant_2, identifiant_final FROM patients WHERE id = :id"
+                    "fiche_8, fiche_9, fiche_10, identifiant_1, identifiant_2 FROM patients WHERE id = :id"
                 ),
                 {"id": patient_id},
             ).mappings().first()
@@ -679,20 +677,34 @@ def create_app() -> Flask:
             "matricule": (request.form.get("matricule") or "").strip() or None,
             "identifiant_1": (request.form.get("identifiant_1") or "").strip() or None,
             "identifiant_2": (request.form.get("identifiant_2") or "").strip() or None,
-            "identifiant_final": (request.form.get("identifiant_final") or "").strip() or None,
         }
         for i in range(1, 11):
             row[f"fiche_{i}"] = (request.form.get(f"fiche_{i}") or "").strip() or None
         if not row["last_name"] or not row["first_name"]:
             return redirect(url_for("edit_patient_form", patient_id=patient_id) + "?error=nom-prenom-requis")
         if session.get("is_admin"):
+            # Récupérer l'état actuel pour l'historique (champs modifiés)
+            with get_engine().connect() as con:
+                old_row = con.execute(
+                    text(
+                        "SELECT last_name, first_name, date_of_birth, profession, phone, other_phone_1, other_phone_2, "
+                        "address, insurance, matricule, fiche_1, fiche_2, fiche_3, fiche_4, fiche_5, fiche_6, "
+                        "fiche_7, fiche_8, fiche_9, fiche_10, identifiant_1, identifiant_2 FROM patients WHERE id = :id"
+                    ),
+                    {"id": patient_id},
+                ).mappings().first()
+            old_data = dict(old_row) if old_row else {}
+            changed_labels = _changed_field_labels(old_data, row, PATIENT_FIELD_LABELS)
+            details_extra = ""
+            if changed_labels:
+                details_extra = f". Champs modifiés: {', '.join(changed_labels)}"
             with get_engine().begin() as con:
                 con.execute(
                     text(
                         "UPDATE patients SET last_name=:ln, first_name=:fn, date_of_birth=:dob, profession=:prof, "
                         "phone=:ph, other_phone_1=:o1, other_phone_2=:o2, address=:addr, insurance=:ins, matricule=:mat, "
                         "fiche_1=:f1, fiche_2=:f2, fiche_3=:f3, fiche_4=:f4, fiche_5=:f5, fiche_6=:f6, fiche_7=:f7, "
-                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2, identifiant_final=:ifin "
+                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2 "
                         "WHERE id=:id"
                     ),
                     {
@@ -702,7 +714,7 @@ def create_app() -> Flask:
                         "f1": row["fiche_1"], "f2": row["fiche_2"], "f3": row["fiche_3"], "f4": row["fiche_4"],
                         "f5": row["fiche_5"], "f6": row["fiche_6"], "f7": row["fiche_7"], "f8": row["fiche_8"],
                         "f9": row["fiche_9"], "f10": row["fiche_10"], "i1": row["identifiant_1"],
-                        "i2": row["identifiant_2"], "ifin": row["identifiant_final"],
+                        "i2": row["identifiant_2"],
                     },
                 )
             _log_action(
@@ -711,7 +723,7 @@ def create_app() -> Flask:
                 "patient_updated",
                 "patient",
                 patient_id,
-                f"{row['last_name']} {row['first_name']}",
+                f"{row['last_name']} {row['first_name']}{details_extra}",
             )
             return redirect(url_for("patient_detail", patient_id=patient_id))
         with get_engine().begin() as con:
@@ -844,7 +856,6 @@ def create_app() -> Flask:
                 matricule=request.form.get("matricule", "").strip(),
                 identifiant_1=request.form.get("identifiant_1", "").strip(),
                 identifiant_2=request.form.get("identifiant_2", "").strip(),
-                identifiant_final=request.form.get("identifiant_final", "").strip(),
                 is_admin=session.get("is_admin"),
             )
         row = {
@@ -860,7 +871,6 @@ def create_app() -> Flask:
             "matricule": (request.form.get("matricule") or "").strip() or None,
             "identifiant_1": (request.form.get("identifiant_1") or "").strip() or None,
             "identifiant_2": (request.form.get("identifiant_2") or "").strip() or None,
-            "identifiant_final": (request.form.get("identifiant_final") or "").strip() or None,
         }
         for i in range(1, 11):
             v = (request.form.get(f"fiche_{i}") or "").strip() or None
@@ -922,8 +932,7 @@ def create_app() -> Flask:
                     first_name,
                     date_of_birth,
                     phone,
-                    matricule,
-                    identifiant_final
+                    matricule
                 FROM patients
                 ORDER BY id DESC
                 LIMIT :limit
@@ -1132,13 +1141,14 @@ def create_app() -> Flask:
                     ),
                     {"id": req_id, "now": datetime.now(timezone.utc), "by": session.get("user_id")},
                 )
+                fields_str = ", ".join(PATIENT_FIELD_LABELS.get(k, k) for k in sorted(row_clean.keys()) if k in PATIENT_FIELD_LABELS)
                 _log_action(
                     session.get("user_id"),
                     session.get("username") or "?",
                     "new_patient_accepted",
                     "patient",
                     new_patient_id,
-                    f"Demandé par {requester}: {data.get('last_name')} {data.get('first_name')}",
+                    f"Demandé par {requester}: {data.get('last_name')} {data.get('first_name')}. Champs: {fields_str}"[:500],
                 )
                 return redirect(url_for("admin") + "?modification_accepted=1")
             if row["request_type"] == "patient":
@@ -1147,7 +1157,7 @@ def create_app() -> Flask:
                         "UPDATE patients SET last_name=:ln, first_name=:fn, date_of_birth=:dob, profession=:prof, "
                         "phone=:ph, other_phone_1=:o1, other_phone_2=:o2, address=:addr, insurance=:ins, matricule=:mat, "
                         "fiche_1=:f1, fiche_2=:f2, fiche_3=:f3, fiche_4=:f4, fiche_5=:f5, fiche_6=:f6, fiche_7=:f7, "
-                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2, identifiant_final=:ifin "
+                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2 "
                         "WHERE id=:id"
                     ),
                     {
@@ -1159,16 +1169,16 @@ def create_app() -> Flask:
                         "f4": data.get("fiche_4"), "f5": data.get("fiche_5"), "f6": data.get("fiche_6"),
                         "f7": data.get("fiche_7"), "f8": data.get("fiche_8"), "f9": data.get("fiche_9"),
                         "f10": data.get("fiche_10"), "i1": data.get("identifiant_1"), "i2": data.get("identifiant_2"),
-                        "ifin": data.get("identifiant_final"),
                     },
                 )
+                fields_str = ", ".join(PATIENT_FIELD_LABELS.get(k, k) for k in sorted(data.keys()) if k in PATIENT_FIELD_LABELS)
                 _log_action(
                     session.get("user_id"),
                     session.get("username") or "?",
                     "modification_accepted",
                     "patient",
                     row["record_id"],
-                    f"Modification patient (demandée par {requester})",
+                    f"Modification patient (demandée par {requester}). Champs modifiés: {fields_str}"[:500],
                 )
             else:
                 con.execute(
@@ -1183,13 +1193,14 @@ def create_app() -> Flask:
                         "mr": data.get("montant_recu"),
                     },
                 )
+                fields_str = ", ".join(CONSULTATION_FIELD_LABELS.get(k, k) for k in sorted(data.keys()) if k in CONSULTATION_FIELD_LABELS)
                 _log_action(
                     session.get("user_id"),
                     session.get("username") or "?",
                     "modification_accepted",
                     "consultation",
                     row["record_id"],
-                    f"Modification consultation (demandée par {requester})",
+                    f"Modification consultation (demandée par {requester}). Champs modifiés: {fields_str}"[:500],
                 )
             con.execute(
                 text(
@@ -1220,6 +1231,17 @@ def create_app() -> Flask:
             try:
                 d = json.loads(row["proposed_data"] or "{}")
                 summary = f"{d.get('last_name', '')} {d.get('first_name', '')}".strip() or row.get("username", "?")
+                req_type = row.get("request_type")
+                if req_type == "new_patient":
+                    fields_str = ", ".join(PATIENT_FIELD_LABELS.get(k, k) for k in sorted(d.keys()) if k in PATIENT_FIELD_LABELS)
+                elif req_type == "patient":
+                    fields_str = ", ".join(PATIENT_FIELD_LABELS.get(k, k) for k in sorted(d.keys()) if k in PATIENT_FIELD_LABELS)
+                elif req_type == "consultation":
+                    fields_str = ", ".join(CONSULTATION_FIELD_LABELS.get(k, k) for k in sorted(d.keys()) if k in CONSULTATION_FIELD_LABELS)
+                else:
+                    fields_str = ""
+                if fields_str:
+                    summary = f"{summary}. Champs concernés: {fields_str}"
             except Exception:
                 summary = row.get("username", "?")
             action_name = "new_patient_rejected" if row.get("request_type") == "new_patient" else "modification_rejected"
@@ -1310,7 +1332,6 @@ def get_metadata() -> MetaData:
         Column("fiche_10", String(200)),
         Column("identifiant_1", String(200)),
         Column("identifiant_2", String(200)),
-        Column("identifiant_final", String(200)),
         Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
     )
 
@@ -1384,11 +1405,59 @@ def get_metadata() -> MetaData:
     Index("idx_patients_name", patients.c.last_name, patients.c.first_name)
     Index("idx_patients_phone", patients.c.phone)
     Index("idx_patients_matricule", patients.c.matricule)
-    Index("idx_patients_ident_final", patients.c.identifiant_final)
     Index("idx_consultations_patient_date", consultations.c.patient_id, consultations.c.consultation_date)
     Index("idx_action_log_created_at", action_log.c.created_at)
 
     return md
+
+
+# Libellés français des champs (pour l'historique des modifications)
+PATIENT_FIELD_LABELS = {
+    "last_name": "Nom",
+    "first_name": "Prénom",
+    "date_of_birth": "Date de naissance",
+    "profession": "Profession",
+    "phone": "Téléphone",
+    "other_phone_1": "Autre téléphone 1",
+    "other_phone_2": "Autre téléphone 2",
+    "address": "Adresse",
+    "insurance": "Assurance",
+    "matricule": "Matricule",
+    "identifiant_1": "Identifiant 1",
+    "identifiant_2": "Identifiant 2",
+    **{f"fiche_{i}": f"Fiche #{i}" for i in range(1, 11)},
+}
+CONSULTATION_FIELD_LABELS = {
+    "consultation_date": "Date consultation",
+    "consultation_detail": "Détail consultation",
+    "montant_acte": "Montant acte",
+    "montant_recu": "Montant reçu",
+}
+
+
+def _normalize_val(v: Any) -> str | None:
+    """Pour comparaison: chaîne vide ou None → None."""
+    if v is None:
+        return None
+    s = (v if isinstance(v, str) else str(v)).strip()
+    return s if s else None
+
+
+def _changed_field_labels(
+    old_data: dict[str, Any],
+    new_data: dict[str, Any],
+    field_labels: dict[str, str],
+) -> list[str]:
+    """Retourne la liste des libellés français des champs dont la valeur a changé."""
+    changed = []
+    for key, label in field_labels.items():
+        if key not in new_data:
+            continue
+        old_v = _normalize_val(old_data.get(key))
+        new_v = _normalize_val(new_data.get(key))
+        if old_v != new_v:
+            changed.append(label)
+    return changed
 
 
 def _log_action(
@@ -1438,6 +1507,23 @@ def init_db(force_reset: bool = False) -> None:
             with engine.begin() as c2:
                 c2.execute(text("UPDATE users SET is_approved = :v WHERE is_approved IS NULL"), {"v": True})
 
+    # Migration: supprimer la colonne identifiant_final des bases existantes
+    db_url = get_database_url()
+    with engine.connect() as con:
+        try:
+            if "postgresql" in db_url:
+                con.execute(text("ALTER TABLE patients DROP COLUMN IF EXISTS identifiant_final"))
+                con.commit()
+            else:
+                # SQLite 3.35+ supporte DROP COLUMN
+                info = con.execute(text("PRAGMA table_info(patients)")).fetchall()
+                cols = [row[1] for row in info]
+                if "identifiant_final" in cols:
+                    con.execute(text("ALTER TABLE patients DROP COLUMN identifiant_final"))
+                    con.commit()
+        except Exception:
+            con.rollback()
+
     with engine.begin() as con:
         count = int(con.execute(text("SELECT COUNT(*) FROM patients")).scalar_one())
         if count == 0:
@@ -1459,7 +1545,6 @@ def init_db(force_reset: bool = False) -> None:
                         "fiche_2": "FICHE-A2",
                         "identifiant_1": "ID1-CLD",
                         "identifiant_2": "ID2-CLD",
-                        "identifiant_final": "FINAL-CLD-001",
                     },
                     {
                         "last_name": "Traoré",
@@ -1476,7 +1561,6 @@ def init_db(force_reset: bool = False) -> None:
                         "fiche_2": None,
                         "identifiant_1": "ID1-MTR",
                         "identifiant_2": None,
-                        "identifiant_final": "FINAL-MTR-002",
                     },
                 ],
             )

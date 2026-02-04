@@ -201,7 +201,7 @@
                 {% else %}{{ log.action }}{% endif %}
               </td>
               <td>{% if log.entity_type %}{{ log.entity_type }}{% if log.entity_id %} #{{ log.entity_id }}{% endif %}{% else %}—{% endif %}</td>
-              <td class="muted" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">{{ log.details or '—' }}</td>
+              <td class="muted" style="max-width: 360px; word-wrap: break-word; white-space: normal;">{{ log.details or '—' }}</td>
             </tr>
           {% else %}
             <tr><td colspan="5" class="muted">Aucune action enregistrée.</td></tr>

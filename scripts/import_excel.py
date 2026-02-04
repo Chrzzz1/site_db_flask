@@ -1,14 +1,19 @@
 """
-Importe des patients (et éventuellement des consultations) depuis un fichier Excel
+Importe des patients et consultations depuis un fichier Excel
 vers la base utilisée par le site (SQLite ou PostgreSQL via DATABASE_URL).
 
 Usage (depuis la racine du projet):
-  python -m scripts.import_excel chemin/vers/fichier.xlsx
+  python -m scripts.import_excel <fichier.xlsx> [feuille]
+  python -m scripts.import_excel --replace <fichier.xlsx> [feuille]
 
-Colonnes supportées (exactement comme dans ton Excel):
-  Nom du patient, Prénom du patient, Date de naissance du patient (DD/MM/YYYY),
-  Profession, Téléphone, Autre numéro (x2), Adresse, Assurance, Matricule,
-  Fiche #1..#10, Identifiant 1/2/final, puis blocs Date consultation N + Détail + Montant acte + Montant reçu.
+  --replace  Vide les tables patients et consultations avant l'import (remplace toute la base).
+  feuille    Nom ou numéro de feuille (0 = première). Par défaut : première feuille.
+
+Format Excel attendu (première ligne = en-têtes):
+  Nom, Prénom, Date de naissance, Profession, Téléphone, Autre numéro, Autre numéro #2,
+  Adresse, Assurance, Matricule, Fiche #1 … Fiche #10,
+  puis pour chaque consultation : Date de consultation N, Détail de la consultation, Montant de l'acte, Montant reçu
+  (consultations 1 à 14).
 """
 from __future__ import annotations
 
@@ -28,8 +33,9 @@ from sqlalchemy import text
 from app import get_engine, get_metadata
 
 
-# Correspondance nom de colonne Excel (exact ou après nettoyage) -> colonne table patients
-# En-têtes exacts de ton Excel : Nom du patient, Prénom du patient, etc.
+# Correspondance nom de colonne Excel (après nettoyage lowercase) -> colonne table patients
+# Format : Nom, Prénom, Date de naissance, Profession, Téléphone, Autre numéro, Autre numéro #2,
+# Adresse, Assurance, Matricule, Fiche #1 … Fiche #10
 COLUMN_MAPPING_PATIENTS = {
     "nom": "last_name",
     "nom du patient": "last_name",
@@ -38,16 +44,11 @@ COLUMN_MAPPING_PATIENTS = {
     "date de naissance": "date_of_birth",
     "date de naissance du patient": "date_of_birth",
     "profession": "profession",
-    "profession du patient": "profession",
     "téléphone": "phone",
-    "téléphone du patient": "phone",
     "autre numéro": "other_phone_1",
     "autre numéro #1": "other_phone_1",
     "autre numéro #2": "other_phone_2",
-    "autre numéro du patient (s'il y en a)": "other_phone_1",
-    "autre numéro du patient (s'il y en a).1": "other_phone_2",
     "adresse": "address",
-    "adresse du patient": "address",
     "assurance": "insurance",
     "matricule": "matricule",
     "fiche #1": "fiche_1",
@@ -60,13 +61,10 @@ COLUMN_MAPPING_PATIENTS = {
     "fiche #8": "fiche_8",
     "fiche #9": "fiche_9",
     "fiche #10": "fiche_10",
-    "identifiant 1": "identifiant_1",
-    "identifiant 2": "identifiant_2",
-    "identifiant final": "identifiant_final",
 }
 
-# Pattern pour détecter les colonnes "Date de consultation 1", "Date de consultation 2", etc.
-CONSULTATION_DATE_PATTERN = re.compile(r"^date de consultation \d+$", re.IGNORECASE)
+# Détecte "Date de consultation 1", "Date de consultation 2", … "Date de consultation 11.1" (pandas renomme les doublons)
+CONSULTATION_DATE_PATTERN = re.compile(r"^date de consultation \d+(\.\d+)?$", re.IGNORECASE)
 
 
 def _normalize_header(name: str) -> str:
@@ -130,32 +128,36 @@ def _row_to_patient(row: pd.Series, header_to_db: dict[str, str]) -> dict:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python -m scripts.import_excel <fichier.xlsx> [feuille]")
-        print("  feuille = nom de la feuille ou numéro (0 = première). Par défaut: première feuille.")
+    args = [a for a in sys.argv[1:] if a != "--replace"]
+    replace = len(args) < len(sys.argv) - 1
+
+    if len(args) < 1:
+        print("Usage: python -m scripts.import_excel [--replace] <fichier.xlsx> [feuille]")
+        print("  --replace  Vide patients et consultations avant d'importer (remplace la base).")
+        print("  feuille    Nom ou numéro de feuille (0 = première).")
         sys.exit(1)
 
-    path = Path(sys.argv[1])
+    path = Path(args[0])
     if not path.is_file():
         print(f"Fichier introuvable: {path}")
         sys.exit(1)
 
     sheet: str | int = 0
-    if len(sys.argv) >= 3:
+    if len(args) >= 2:
         try:
-            sheet = int(sys.argv[2])
+            sheet = int(args[1])
         except ValueError:
-            sheet = sys.argv[2]
+            sheet = args[1]
 
     df = pd.read_excel(path, sheet_name=sheet, dtype=str)
     df = df.rename(columns=lambda c: _normalize_header(str(c)))
 
-    # Construire le mapping en-tête Excel -> colonne DB pour les colonnes présentes
+    # Construire le mapping en-tête Excel (nom réel) -> colonne DB pour les colonnes présentes
     header_to_patient: dict[str, str] = {}
     for col in df.columns:
-        n = _normalize_header(col)
+        n = _normalize_header(str(col))
         if n in COLUMN_MAPPING_PATIENTS:
-            header_to_patient[n] = COLUMN_MAPPING_PATIENTS[n]
+            header_to_patient[str(col)] = COLUMN_MAPPING_PATIENTS[n]
 
     if "last_name" not in header_to_patient and "first_name" not in header_to_patient:
         # Essayer des variantes courantes
@@ -175,13 +177,14 @@ def main() -> None:
     patients_table = md.tables["patients"]
     consultations_table = md.tables["consultations"]
 
-    # Blocs consultation : "Date de consultation 1" + 3 colonnes (Détail, Montant acte, Montant reçu), etc.
+    # Blocs consultation : "Date de consultation N" puis 3 colonnes (Détail, Montant acte, Montant reçu)
+    # On utilise les indices pour gérer les colonnes dupliquées (même libellé pour chaque consultation)
     col_list = list(df.columns)
-    consultation_blocks: list[tuple[str, str, str, str]] = []
+    consultation_blocks: list[tuple[int, int, int, int]] = []
     for i, col in enumerate(col_list):
         n = _normalize_header(str(col))
         if CONSULTATION_DATE_PATTERN.match(n) and i + 3 < len(col_list):
-            consultation_blocks.append((col_list[i], col_list[i + 1], col_list[i + 2], col_list[i + 3]))
+            consultation_blocks.append((i, i + 1, i + 2, i + 3))
 
     inserted_patients = 0
     inserted_consultations = 0
@@ -190,6 +193,11 @@ def main() -> None:
     consult_cols = {c.name for c in consultations_table.c if c.name not in ("id", "created_at")}
 
     with engine.begin() as con:
+        if replace:
+            con.execute(text("DELETE FROM consultations"))
+            con.execute(text("DELETE FROM patients"))
+            print("Tables patients et consultations vidées (--replace).")
+
         for idx, row in df.iterrows():
             row_dict = _row_to_patient(row, header_to_patient)
             if not row_dict.get("last_name") and not row_dict.get("first_name"):
@@ -202,17 +210,17 @@ def main() -> None:
             patient_id = r.scalar_one()
             inserted_patients += 1
 
-            for date_col, detail_col, acte_col, recu_col in consultation_blocks:
-                date_val = row.get(date_col)
-                if pd.isna(date_val) or (isinstance(date_val, str) and not date_val.strip()):
+            for date_idx, detail_idx, acte_idx, recu_idx in consultation_blocks:
+                date_val = row.iloc[date_idx] if date_idx < len(row) else None
+                if pd.isna(date_val) or (isinstance(date_val, str) and not str(date_val).strip()):
                     continue
                 consultation_date = _parse_date_fr(date_val) or str(date_val).strip()
                 if not consultation_date:
                     continue
-                detail_val = row.get(detail_col)
+                detail_val = row.iloc[detail_idx] if detail_idx < len(row) else None
                 detail = None if pd.isna(detail_val) else str(detail_val).strip() or None
-                montant_acte = _parse_float_fr(row.get(acte_col))
-                montant_recu = _parse_float_fr(row.get(recu_col))
+                montant_acte = _parse_float_fr(row.iloc[acte_idx] if acte_idx < len(row) else None)
+                montant_recu = _parse_float_fr(row.iloc[recu_idx] if recu_idx < len(row) else None)
                 consult_row = {
                     "patient_id": patient_id,
                     "consultation_date": consultation_date,
