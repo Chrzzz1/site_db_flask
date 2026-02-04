@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -222,21 +223,28 @@ def create_app() -> Flask:
                 return admin_redirect("Le mot de passe doit faire au moins 6 caractères.")
             if password != password2:
                 return admin_redirect("Les deux mots de passe ne correspondent pas.")
-            with engine.connect() as con:
-                exists = con.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": username}).scalar()
-                if exists:
-                    return admin_redirect("Cet identifiant est déjà pris.")
-            with engine.begin() as con:
-                con.execute(
-                    users_t.insert(),
-                    {
-                        "username": username,
-                        "password_hash": generate_password_hash(password),
-                        "is_admin": is_admin_form,
-                        "is_approved": True,
-                    },
-                )
-            return redirect(url_for("admin") + "?created=1")
+            try:
+                with engine.connect() as con:
+                    exists = con.execute(text("SELECT 1 FROM users WHERE username = :u"), {"u": username}).scalar()
+                    if exists:
+                        return admin_redirect("Cet identifiant est déjà pris.")
+                with engine.begin() as con:
+                    # INSERT explicite pour éviter soucis de typage SQLite/PostgreSQL
+                    con.execute(
+                        text(
+                            "INSERT INTO users (username, password_hash, is_admin, is_approved) "
+                            "VALUES (:u, :p, :is_admin, :is_approved)"
+                        ),
+                        {
+                            "u": username,
+                            "p": generate_password_hash(password),
+                            "is_admin": is_admin_form,
+                            "is_approved": True,
+                        },
+                    )
+                return redirect(url_for("admin") + "?created=1")
+            except Exception as e:
+                return admin_redirect(f"Erreur lors de la création du compte : {str(e)}")
 
         # Inscription publique : envoi d'un email de confirmation, puis création du compte au clic sur le lien
         email = (request.form.get("email") or "").strip().lower()
@@ -615,6 +623,167 @@ def create_app() -> Flask:
 
         return redirect(url_for("patient_detail", patient_id=patient_id))
 
+    @app.get("/patients/<int:patient_id>/edit")
+    @login_required
+    def edit_patient_form(patient_id: int):
+        with get_engine().connect() as con:
+            patient = con.execute(
+                text(
+                    "SELECT id, last_name, first_name, date_of_birth, profession, phone, other_phone_1, other_phone_2, "
+                    "address, insurance, matricule, fiche_1, fiche_2, fiche_3, fiche_4, fiche_5, fiche_6, fiche_7, "
+                    "fiche_8, fiche_9, fiche_10, identifiant_1, identifiant_2, identifiant_final FROM patients WHERE id = :id"
+                ),
+                {"id": patient_id},
+            ).mappings().first()
+        if not patient:
+            return redirect(url_for("index"))
+        patient = dict(patient)
+        date_day, date_month, date_year = _parse_date_parts(patient.get("date_of_birth") or "")
+        return render_template(
+            "edit_patient.html",
+            patient=patient,
+            patient_id=patient_id,
+            is_admin=session.get("is_admin"),
+            date_day=date_day,
+            date_month=date_month,
+            date_year=date_year,
+            error="",
+        )
+
+    @app.post("/patients/<int:patient_id>/edit")
+    @login_required
+    def edit_patient_submit(patient_id: int):
+        date_day = (request.form.get("date_day") or "").strip()
+        date_month = (request.form.get("date_month") or "").strip()
+        date_year = (request.form.get("date_year") or "").strip()
+        date_of_birth = _date_from_parts(date_day, date_month, date_year) if (date_day and date_month and date_year) else None
+        if not date_of_birth and (date_day or date_month or date_year):
+            date_of_birth = _normalize_date_input(request.form.get("date_of_birth") or "") or None
+        row = {
+            "last_name": (request.form.get("last_name") or "").strip(),
+            "first_name": (request.form.get("first_name") or "").strip(),
+            "date_of_birth": date_of_birth,
+            "profession": (request.form.get("profession") or "").strip() or None,
+            "phone": (request.form.get("phone") or "").strip() or None,
+            "other_phone_1": (request.form.get("other_phone_1") or "").strip() or None,
+            "other_phone_2": (request.form.get("other_phone_2") or "").strip() or None,
+            "address": (request.form.get("address") or "").strip() or None,
+            "insurance": (request.form.get("insurance") or "").strip() or None,
+            "matricule": (request.form.get("matricule") or "").strip() or None,
+            "identifiant_1": (request.form.get("identifiant_1") or "").strip() or None,
+            "identifiant_2": (request.form.get("identifiant_2") or "").strip() or None,
+            "identifiant_final": (request.form.get("identifiant_final") or "").strip() or None,
+        }
+        for i in range(1, 11):
+            row[f"fiche_{i}"] = (request.form.get(f"fiche_{i}") or "").strip() or None
+        if not row["last_name"] or not row["first_name"]:
+            return redirect(url_for("edit_patient_form", patient_id=patient_id) + "?error=nom-prenom-requis")
+        if session.get("is_admin"):
+            with get_engine().begin() as con:
+                con.execute(
+                    text(
+                        "UPDATE patients SET last_name=:ln, first_name=:fn, date_of_birth=:dob, profession=:prof, "
+                        "phone=:ph, other_phone_1=:o1, other_phone_2=:o2, address=:addr, insurance=:ins, matricule=:mat, "
+                        "fiche_1=:f1, fiche_2=:f2, fiche_3=:f3, fiche_4=:f4, fiche_5=:f5, fiche_6=:f6, fiche_7=:f7, "
+                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2, identifiant_final=:ifin "
+                        "WHERE id=:id"
+                    ),
+                    {
+                        "id": patient_id, "ln": row["last_name"], "fn": row["first_name"], "dob": row["date_of_birth"],
+                        "prof": row["profession"], "ph": row["phone"], "o1": row["other_phone_1"], "o2": row["other_phone_2"],
+                        "addr": row["address"], "ins": row["insurance"], "mat": row["matricule"],
+                        "f1": row["fiche_1"], "f2": row["fiche_2"], "f3": row["fiche_3"], "f4": row["fiche_4"],
+                        "f5": row["fiche_5"], "f6": row["fiche_6"], "f7": row["fiche_7"], "f8": row["fiche_8"],
+                        "f9": row["fiche_9"], "f10": row["fiche_10"], "i1": row["identifiant_1"],
+                        "i2": row["identifiant_2"], "ifin": row["identifiant_final"],
+                    },
+                )
+            return redirect(url_for("patient_detail", patient_id=patient_id))
+        with get_engine().begin() as con:
+            con.execute(
+                text(
+                    "INSERT INTO modification_requests (request_type, record_id, user_id, proposed_data, status) "
+                    "VALUES ('patient', :record_id, :user_id, :data, 'pending')"
+                ),
+                {
+                    "record_id": patient_id,
+                    "user_id": session["user_id"],
+                    "data": json.dumps(row),
+                },
+            )
+        return redirect(url_for("patient_detail", patient_id=patient_id) + "?msg=modification-en-attente")
+
+    @app.get("/consultations/<int:consultation_id>/edit")
+    @login_required
+    def edit_consultation_form(consultation_id: int):
+        with get_engine().connect() as con:
+            c = con.execute(
+                text(
+                    "SELECT id, patient_id, consultation_date, consultation_detail, montant_acte, montant_recu "
+                    "FROM consultations WHERE id = :id"
+                ),
+                {"id": consultation_id},
+            ).mappings().first()
+        if not c:
+            return redirect(url_for("index"))
+        c = dict(c)
+        return render_template(
+            "edit_consultation.html",
+            consultation=c,
+            consultation_id=consultation_id,
+            patient_id=c["patient_id"],
+            is_admin=session.get("is_admin"),
+            error="",
+        )
+
+    @app.post("/consultations/<int:consultation_id>/edit")
+    @login_required
+    def edit_consultation_submit(consultation_id: int):
+        consultation_date = (request.form.get("consultation_date") or "").strip()
+        consultation_detail = (request.form.get("consultation_detail") or "").strip() or None
+        montant_acte_raw = (request.form.get("montant_acte") or "").strip()
+        montant_recu_raw = (request.form.get("montant_recu") or "").strip()
+        def parse_amount(v: str):
+            if not v:
+                return None
+            return float(v.replace(",", "."))
+        try:
+            montant_acte = parse_amount(montant_acte_raw)
+            montant_recu = parse_amount(montant_recu_raw)
+        except ValueError:
+            montant_acte = montant_recu = None
+        if not consultation_date:
+            return redirect(url_for("edit_consultation_form", consultation_id=consultation_id) + "?error=date-requise")
+        with get_engine().connect() as con:
+            c = con.execute(text("SELECT patient_id FROM consultations WHERE id = :id"), {"id": consultation_id}).mappings().first()
+            if not c:
+                return redirect(url_for("index"))
+            patient_id = c["patient_id"]
+        row = {
+            "consultation_date": consultation_date,
+            "consultation_detail": consultation_detail,
+            "montant_acte": montant_acte,
+            "montant_recu": montant_recu,
+        }
+        if session.get("is_admin"):
+            with get_engine().begin() as con:
+                con.execute(
+                    text(
+                        "UPDATE consultations SET consultation_date=:d, consultation_detail=:det, montant_acte=:ma, montant_recu=:mr WHERE id=:id"
+                    ),
+                    {"id": consultation_id, "d": consultation_date, "det": consultation_detail, "ma": montant_acte, "mr": montant_recu},
+                )
+            return redirect(url_for("patient_detail", patient_id=patient_id))
+        with get_engine().begin() as con:
+            con.execute(
+                text(
+                    "INSERT INTO modification_requests (request_type, record_id, user_id, proposed_data, status) "
+                    "VALUES ('consultation', :record_id, :user_id, :data, 'pending')"
+                ),
+                {"record_id": consultation_id, "user_id": session["user_id"], "data": json.dumps(row)},
+            )
+        return redirect(url_for("patient_detail", patient_id=patient_id) + "?msg=modification-en-attente")
+
     @app.get("/patients/new")
     @login_required
     def add_patient_form() -> str:
@@ -776,11 +945,24 @@ def create_app() -> Flask:
             users = con.execute(
                 text("SELECT id, username, is_admin, is_approved FROM users ORDER BY id")
             ).mappings().all()
+            modification_requests = con.execute(
+                text(
+                    """
+                    SELECT mr.id, mr.request_type, mr.record_id, mr.user_id, mr.proposed_data, mr.status, mr.created_at, u.username,
+                           CASE WHEN mr.request_type = 'patient' THEN mr.record_id ELSE (SELECT patient_id FROM consultations WHERE id = mr.record_id) END AS patient_id
+                    FROM modification_requests mr
+                    JOIN users u ON u.id = mr.user_id
+                    WHERE mr.status = 'pending'
+                    ORDER BY mr.created_at DESC
+                    """
+                )
+            ).mappings().all()
         return render_template(
             "admin.html",
             patients=[dict(r) for r in patients],
             consultations=[dict(r) for r in consultations],
             users=[dict(r) for r in users],
+            modification_requests=[dict(r) for r in modification_requests],
             current_user_id=session.get("user_id"),
         )
 
@@ -850,6 +1032,72 @@ def create_app() -> Flask:
         with get_engine().begin() as con:
             con.execute(text("UPDATE users SET is_approved = :ok WHERE id = :id"), {"ok": True, "id": user_id})
         return redirect(url_for("admin") + "?approved=1")
+
+    @app.post("/admin/modification-requests/<int:req_id>/accept")
+    @admin_required
+    def admin_accept_modification(req_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text("SELECT id, request_type, record_id, proposed_data FROM modification_requests WHERE id = :id AND status = 'pending'"),
+                {"id": req_id},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("admin"))
+        data = json.loads(row["proposed_data"])
+        with get_engine().begin() as con:
+            if row["request_type"] == "patient":
+                con.execute(
+                    text(
+                        "UPDATE patients SET last_name=:ln, first_name=:fn, date_of_birth=:dob, profession=:prof, "
+                        "phone=:ph, other_phone_1=:o1, other_phone_2=:o2, address=:addr, insurance=:ins, matricule=:mat, "
+                        "fiche_1=:f1, fiche_2=:f2, fiche_3=:f3, fiche_4=:f4, fiche_5=:f5, fiche_6=:f6, fiche_7=:f7, "
+                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2, identifiant_final=:ifin "
+                        "WHERE id=:id"
+                    ),
+                    {
+                        "id": row["record_id"], "ln": data.get("last_name"), "fn": data.get("first_name"),
+                        "dob": data.get("date_of_birth"), "prof": data.get("profession"), "ph": data.get("phone"),
+                        "o1": data.get("other_phone_1"), "o2": data.get("other_phone_2"), "addr": data.get("address"),
+                        "ins": data.get("insurance"), "mat": data.get("matricule"),
+                        "f1": data.get("fiche_1"), "f2": data.get("fiche_2"), "f3": data.get("fiche_3"),
+                        "f4": data.get("fiche_4"), "f5": data.get("fiche_5"), "f6": data.get("fiche_6"),
+                        "f7": data.get("fiche_7"), "f8": data.get("fiche_8"), "f9": data.get("fiche_9"),
+                        "f10": data.get("fiche_10"), "i1": data.get("identifiant_1"), "i2": data.get("identifiant_2"),
+                        "ifin": data.get("identifiant_final"),
+                    },
+                )
+            else:
+                con.execute(
+                    text(
+                        "UPDATE consultations SET consultation_date=:d, consultation_detail=:det, montant_acte=:ma, montant_recu=:mr WHERE id=:id"
+                    ),
+                    {
+                        "id": row["record_id"],
+                        "d": data.get("consultation_date"),
+                        "det": data.get("consultation_detail"),
+                        "ma": data.get("montant_acte"),
+                        "mr": data.get("montant_recu"),
+                    },
+                )
+            con.execute(
+                text(
+                    "UPDATE modification_requests SET status = 'accepted', reviewed_at = :now, reviewed_by = :by WHERE id = :id"
+                ),
+                {"id": req_id, "now": datetime.now(timezone.utc), "by": session.get("user_id")},
+            )
+        return redirect(url_for("admin") + "?modification_accepted=1")
+
+    @app.post("/admin/modification-requests/<int:req_id>/reject")
+    @admin_required
+    def admin_reject_modification(req_id: int):
+        with get_engine().begin() as con:
+            con.execute(
+                text(
+                    "UPDATE modification_requests SET status = 'rejected', reviewed_at = :now, reviewed_by = :by WHERE id = :id"
+                ),
+                {"id": req_id, "now": datetime.now(timezone.utc), "by": session.get("user_id")},
+            )
+        return redirect(url_for("admin") + "?modification_rejected=1")
 
     @app.post("/admin/users/<int:user_id>/delete")
     @admin_required
@@ -970,6 +1218,20 @@ def get_metadata() -> MetaData:
         Column("token", String(64), unique=True, nullable=False),
         Column("expires_at", DateTime(timezone=True), nullable=False),
         Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
+
+    modification_requests = Table(
+        "modification_requests",
+        md,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column("request_type", String(20), nullable=False),  # 'patient' | 'consultation'
+        Column("record_id", Integer, nullable=False),
+        Column("user_id", Integer, nullable=False),
+        Column("proposed_data", String(5000), nullable=False),  # JSON
+        Column("status", String(20), nullable=False),  # pending | accepted | rejected
+        Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+        Column("reviewed_at", DateTime(timezone=True), nullable=True),
+        Column("reviewed_by", Integer, nullable=True),
     )
 
     Index("idx_patients_name", patients.c.last_name, patients.c.first_name)

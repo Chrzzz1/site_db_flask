@@ -18,8 +18,14 @@
     <section class="card">
       <div class="card__header">
         <h1>{{ patient["last_name"] }} {{ patient["first_name"] }}</h1>
-        <a class="btn btn--ghost" href="{{ url_for('index', last_name=patient['last_name'], first_name=patient['first_name']) }}">Rechercher</a>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <a class="btn btn--ghost" href="{{ url_for('edit_patient_form', patient_id=patient['id']) }}">Modifier le patient</a>
+          <a class="btn btn--ghost" href="{{ url_for('index', last_name=patient['last_name'], first_name=patient['first_name']) }}">Rechercher</a>
+        </div>
       </div>
+      {% if request.args.get('msg') == 'modification-en-attente' %}
+        <div class="alert muted" style="border-color: var(--border);">Votre modification a été envoyée. Un administrateur doit l'accepter pour qu'elle soit appliquée.</div>
+      {% endif %}
 
       <div class="kv">
         <div class="kv__item"><div class="kv__k">Date de naissance</div><div class="kv__v">{{ patient["date_of_birth"] }}</div></div>
@@ -64,6 +70,7 @@
                 <th>Détail</th>
                 <th>Montant acte</th>
                 <th>Montant reçu</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
