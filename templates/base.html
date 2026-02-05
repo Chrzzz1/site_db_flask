@@ -11,7 +11,9 @@
   <body>
     <header class="header">
       <div class="container header__inner">
-        <div class="brand"></div>
+        <a class="brand" href="{{ url_for('index') if session.get('user_id') else url_for('login') }}" aria-label="Accueil">
+          <img class="brand__logo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" />
+        </a>
         <nav class="nav">
           {% if session.get('user_id') %}
             <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}">Recherche</a>
