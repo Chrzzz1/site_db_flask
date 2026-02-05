@@ -52,11 +52,6 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 
   width: auto;
   display: block;
   object-fit: contain;
-  /* Fond blanc du logo rendu transparent */
-  mix-blend-mode: multiply;
-}
-[data-theme="dark"] .brand__logo {
-  mix-blend-mode: lighten;
 }
 
 .brand__title { font-weight: 650; letter-spacing: 0.1px; }
