@@ -28,16 +28,14 @@
       {% endif %}
 
       <div class="kv">
-        <div class="kv__item"><div class="kv__k">Date de naissance</div><div class="kv__v">{{ patient["date_of_birth"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Profession</div><div class="kv__v">{{ patient["profession"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Téléphone</div><div class="kv__v">{{ patient["phone"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Autre numéro #1</div><div class="kv__v">{{ patient["other_phone_1"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Autre numéro #2</div><div class="kv__v">{{ patient["other_phone_2"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Adresse</div><div class="kv__v">{{ patient["address"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Assurance</div><div class="kv__v">{{ patient["insurance"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Matricule</div><div class="kv__v">{{ patient["matricule"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Identifiant 1</div><div class="kv__v">{{ patient["identifiant_1"] }}</div></div>
-        <div class="kv__item"><div class="kv__k">Identifiant 2</div><div class="kv__v">{{ patient["identifiant_2"] }}</div></div>
+        <div class="kv__item"><div class="kv__k">Date de naissance</div><div class="kv__v">{{ patient["date_of_birth"] | dateonly }}</div></div>
+        <div class="kv__item"><div class="kv__k">Profession</div><div class="kv__v">{{ patient["profession"] or "—" }}</div></div>
+        <div class="kv__item"><div class="kv__k">Téléphone</div><div class="kv__v">{{ patient["phone"] or "—" }}</div></div>
+        <div class="kv__item"><div class="kv__k">Autre numéro #1</div><div class="kv__v">{{ patient["other_phone_1"] or "—" }}</div></div>
+        <div class="kv__item"><div class="kv__k">Autre numéro #2</div><div class="kv__v">{{ patient["other_phone_2"] or "—" }}</div></div>
+        <div class="kv__item"><div class="kv__k">Adresse</div><div class="kv__v">{{ patient["address"] or "—" }}</div></div>
+        <div class="kv__item"><div class="kv__k">Assurance</div><div class="kv__v">{{ patient["insurance"] or "—" }}</div></div>
+        <div class="kv__item"><div class="kv__k">Matricule</div><div class="kv__v">{{ patient["matricule"] or "—" }}</div></div>
       </div>
 
       {% if fiches %}
@@ -75,10 +73,10 @@
             <tbody>
               {% for c in consultations %}
                 <tr>
-                  <td>{{ c["consultation_date"] }}</td>
-                  <td>{{ c["consultation_detail"] }}</td>
-                  <td>{{ c["montant_acte"] }}</td>
-                  <td>{{ c["montant_recu"] }}</td>
+                  <td>{{ c["consultation_date"] | dateonly }}</td>
+                  <td>{{ c["consultation_detail"] or "—" }}</td>
+                  <td>{{ c["montant_acte"] if c["montant_acte"] is not none else "—" }}</td>
+                  <td>{{ c["montant_recu"] if c["montant_recu"] is not none else "—" }}</td>
                 </tr>
               {% endfor %}
             </tbody>

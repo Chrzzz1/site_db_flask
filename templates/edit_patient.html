@@ -88,17 +88,6 @@
         </div>
       </div>
 
-      <div class="form__grid">
-        <div class="form__row">
-          <label class="label" for="identifiant_1">Identifiant 1</label>
-          <input class="input" id="identifiant_1" name="identifiant_1" value="{{ patient.identifiant_1 or '' }}" />
-        </div>
-        <div class="form__row">
-          <label class="label" for="identifiant_2">Identifiant 2</label>
-          <input class="input" id="identifiant_2" name="identifiant_2" value="{{ patient.identifiant_2 or '' }}" />
-        </div>
-      </div>
-
       <h2>Fiches (optionnel)</h2>
       <div class="form__grid form__grid--wide">
         {% for i in range(1, 11) %}

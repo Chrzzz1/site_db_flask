@@ -420,8 +420,6 @@ def create_app() -> Flask:
                 p.address,
                 p.insurance,
                 p.matricule,
-                p.identifiant_1,
-                p.identifiant_2,
                 (
                     SELECT c.consultation_date
                     FROM consultations c
@@ -527,8 +525,6 @@ def create_app() -> Flask:
                         matricule,
                         fiche_1, fiche_2, fiche_3, fiche_4, fiche_5,
                         fiche_6, fiche_7, fiche_8, fiche_9, fiche_10,
-                        identifiant_1,
-                        identifiant_2,
                         created_at
                     FROM patients
                     WHERE id = :patient_id
@@ -648,7 +644,7 @@ def create_app() -> Flask:
                 text(
                     "SELECT id, last_name, first_name, date_of_birth, profession, phone, other_phone_1, other_phone_2, "
                     "address, insurance, matricule, fiche_1, fiche_2, fiche_3, fiche_4, fiche_5, fiche_6, fiche_7, "
-                    "fiche_8, fiche_9, fiche_10, identifiant_1, identifiant_2 FROM patients WHERE id = :id"
+                    "fiche_8, fiche_9, fiche_10 FROM patients WHERE id = :id"
                 ),
                 {"id": patient_id},
             ).mappings().first()
@@ -687,8 +683,6 @@ def create_app() -> Flask:
             "address": (request.form.get("address") or "").strip() or None,
             "insurance": (request.form.get("insurance") or "").strip() or None,
             "matricule": (request.form.get("matricule") or "").strip() or None,
-            "identifiant_1": (request.form.get("identifiant_1") or "").strip() or None,
-            "identifiant_2": (request.form.get("identifiant_2") or "").strip() or None,
         }
         for i in range(1, 11):
             row[f"fiche_{i}"] = (request.form.get(f"fiche_{i}") or "").strip() or None
@@ -701,7 +695,7 @@ def create_app() -> Flask:
                     text(
                         "SELECT last_name, first_name, date_of_birth, profession, phone, other_phone_1, other_phone_2, "
                         "address, insurance, matricule, fiche_1, fiche_2, fiche_3, fiche_4, fiche_5, fiche_6, "
-                        "fiche_7, fiche_8, fiche_9, fiche_10, identifiant_1, identifiant_2 FROM patients WHERE id = :id"
+                        "fiche_7, fiche_8, fiche_9, fiche_10 FROM patients WHERE id = :id"
                     ),
                     {"id": patient_id},
                 ).mappings().first()
@@ -716,7 +710,7 @@ def create_app() -> Flask:
                         "UPDATE patients SET last_name=:ln, first_name=:fn, date_of_birth=:dob, profession=:prof, "
                         "phone=:ph, other_phone_1=:o1, other_phone_2=:o2, address=:addr, insurance=:ins, matricule=:mat, "
                         "fiche_1=:f1, fiche_2=:f2, fiche_3=:f3, fiche_4=:f4, fiche_5=:f5, fiche_6=:f6, fiche_7=:f7, "
-                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2 "
+                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10 "
                         "WHERE id=:id"
                     ),
                     {
@@ -725,8 +719,7 @@ def create_app() -> Flask:
                         "addr": row["address"], "ins": row["insurance"], "mat": row["matricule"],
                         "f1": row["fiche_1"], "f2": row["fiche_2"], "f3": row["fiche_3"], "f4": row["fiche_4"],
                         "f5": row["fiche_5"], "f6": row["fiche_6"], "f7": row["fiche_7"], "f8": row["fiche_8"],
-                        "f9": row["fiche_9"], "f10": row["fiche_10"], "i1": row["identifiant_1"],
-                        "i2": row["identifiant_2"],
+                        "f9": row["fiche_9"], "f10": row["fiche_10"],
                     },
                 )
             _log_action(
@@ -866,8 +859,6 @@ def create_app() -> Flask:
                 address=request.form.get("address", "").strip(),
                 insurance=request.form.get("insurance", "").strip(),
                 matricule=request.form.get("matricule", "").strip(),
-                identifiant_1=request.form.get("identifiant_1", "").strip(),
-                identifiant_2=request.form.get("identifiant_2", "").strip(),
                 is_admin=session.get("is_admin"),
             )
         row = {
@@ -881,8 +872,6 @@ def create_app() -> Flask:
             "address": (request.form.get("address") or "").strip() or None,
             "insurance": (request.form.get("insurance") or "").strip() or None,
             "matricule": (request.form.get("matricule") or "").strip() or None,
-            "identifiant_1": (request.form.get("identifiant_1") or "").strip() or None,
-            "identifiant_2": (request.form.get("identifiant_2") or "").strip() or None,
         }
         for i in range(1, 11):
             v = (request.form.get(f"fiche_{i}") or "").strip() or None
@@ -1169,7 +1158,7 @@ def create_app() -> Flask:
                         "UPDATE patients SET last_name=:ln, first_name=:fn, date_of_birth=:dob, profession=:prof, "
                         "phone=:ph, other_phone_1=:o1, other_phone_2=:o2, address=:addr, insurance=:ins, matricule=:mat, "
                         "fiche_1=:f1, fiche_2=:f2, fiche_3=:f3, fiche_4=:f4, fiche_5=:f5, fiche_6=:f6, fiche_7=:f7, "
-                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10, identifiant_1=:i1, identifiant_2=:i2 "
+                        "fiche_8=:f8, fiche_9=:f9, fiche_10=:f10 "
                         "WHERE id=:id"
                     ),
                     {
@@ -1180,7 +1169,7 @@ def create_app() -> Flask:
                         "f1": data.get("fiche_1"), "f2": data.get("fiche_2"), "f3": data.get("fiche_3"),
                         "f4": data.get("fiche_4"), "f5": data.get("fiche_5"), "f6": data.get("fiche_6"),
                         "f7": data.get("fiche_7"), "f8": data.get("fiche_8"), "f9": data.get("fiche_9"),
-                        "f10": data.get("fiche_10"), "i1": data.get("identifiant_1"), "i2": data.get("identifiant_2"),
+                        "f10": data.get("fiche_10"),
                     },
                 )
                 fields_str = ", ".join(PATIENT_FIELD_LABELS.get(k, k) for k in sorted(data.keys()) if k in PATIENT_FIELD_LABELS)
@@ -1342,8 +1331,6 @@ def get_metadata() -> MetaData:
         Column("fiche_8", String(200)),
         Column("fiche_9", String(200)),
         Column("fiche_10", String(200)),
-        Column("identifiant_1", String(200)),
-        Column("identifiant_2", String(200)),
         Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
     )
 
@@ -1435,8 +1422,6 @@ PATIENT_FIELD_LABELS = {
     "address": "Adresse",
     "insurance": "Assurance",
     "matricule": "Matricule",
-    "identifiant_1": "Identifiant 1",
-    "identifiant_2": "Identifiant 2",
     **{f"fiche_{i}": f"Fiche #{i}" for i in range(1, 11)},
 }
 CONSULTATION_FIELD_LABELS = {
@@ -1536,6 +1521,23 @@ def init_db(force_reset: bool = False) -> None:
         except Exception:
             con.rollback()
 
+    # Migration: supprimer identifiant_1 et identifiant_2 des bases existantes
+    with engine.connect() as con:
+        try:
+            if "postgresql" in db_url:
+                con.execute(text("ALTER TABLE patients DROP COLUMN IF EXISTS identifiant_1"))
+                con.execute(text("ALTER TABLE patients DROP COLUMN IF EXISTS identifiant_2"))
+                con.commit()
+            else:
+                for col in ("identifiant_1", "identifiant_2"):
+                    info = con.execute(text("PRAGMA table_info(patients)")).fetchall()
+                    cols = [row[1] for row in info]
+                    if col in cols:
+                        con.execute(text(f"ALTER TABLE patients DROP COLUMN {col}"))
+                        con.commit()
+        except Exception:
+            con.rollback()
+
     with engine.begin() as con:
         count = int(con.execute(text("SELECT COUNT(*) FROM patients")).scalar_one())
         if count == 0:
@@ -1555,8 +1557,6 @@ def init_db(force_reset: bool = False) -> None:
                         "matricule": "MAT-001",
                         "fiche_1": "FICHE-A1",
                         "fiche_2": "FICHE-A2",
-                        "identifiant_1": "ID1-CLD",
-                        "identifiant_2": "ID2-CLD",
                     },
                     {
                         "last_name": "Traoré",
@@ -1571,8 +1571,6 @@ def init_db(force_reset: bool = False) -> None:
                         "matricule": "MAT-002",
                         "fiche_1": "FICHE-B1",
                         "fiche_2": None,
-                        "identifiant_1": "ID1-MTR",
-                        "identifiant_2": None,
                     },
                 ],
             )
