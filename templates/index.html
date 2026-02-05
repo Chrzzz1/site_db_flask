@@ -76,7 +76,6 @@
                 <th>Date naissance</th>
                 <th>Téléphone</th>
                 <th>Matricule</th>
-                <th>Identifiant final</th>
                 <th>Dernière consultation</th>
               </tr>
             </thead>
@@ -86,10 +85,10 @@
                   <td>{{ r["id"] }}</td>
                   <td><a href="{{ url_for('patient_detail', patient_id=r['id']) }}">{{ r["last_name"] }}</a></td>
                   <td>{{ r["first_name"] }}</td>
-                  <td>{{ r["date_of_birth"] }}</td>
-                  <td>{{ r["phone"] }}</td>
-                  <td>{{ r["matricule"] }}</td>
-                  <td>{{ r["last_consultation_date"] }}</td>
+                  <td>{{ r["date_of_birth"] | dateonly }}</td>
+                  <td>{{ r["phone"] or '—' }}</td>
+                  <td>{{ r["matricule"] or '—' }}</td>
+                  <td>{{ r["last_consultation_date"] | dateonly }}</td>
                 </tr>
               {% endfor %}
             </tbody>

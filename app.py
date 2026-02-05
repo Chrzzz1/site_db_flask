@@ -130,6 +130,18 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 
+    @app.template_filter("dateonly")
+    def _dateonly_filter(val: Any) -> str:
+        """Affiche une date sans l'heure (ou — si vide)."""
+        if val is None:
+            return "—"
+        if hasattr(val, "strftime"):
+            return val.strftime("%Y-%m-%d")
+        s = str(val).strip()
+        if len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-":
+            return s[:10]
+        return s or "—"
+
     # Créer data/ seulement en local (SQLite) ; en production DATABASE_URL pointe vers PostgreSQL
     if not os.environ.get("DATABASE_URL", "").strip():
         DATA_DIR.mkdir(parents=True, exist_ok=True)
