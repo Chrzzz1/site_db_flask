@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set title = "Prendre un rendez-vous" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Prendre un rendez-vous</h1>
+      <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Retour à la liste</a>
+    </div>
+
+    {% if error %}
+      <div class="alert alert--error">{{ error }}</div>
+    {% endif %}
+
+    <form class="form" method="post" action="{{ url_for('appointment_new_submit') }}">
+      <input type="hidden" name="patient_id" id="patient_id" value="{{ preselected_patient_id or '' }}" required />
+      <div class="form__row">
+        <label class="label" for="patient_search">Rechercher un patient <span class="required">*</span></label>
+        <div class="autocomplete-wrap" style="position: relative;">
+          <input class="input" id="patient_search" type="text" autocomplete="off"
+                 placeholder="Tapez le nom ou prénom du patient..."
+                 value="{{ preselected_name or '' }}"
+                 data-patient-id="{{ preselected_patient_id or '' }}" />
+          <div id="patient_results" class="autocomplete-results" style="display: none;"></div>
+        </div>
+        <p class="muted" style="margin-top: 4px; font-size: 12px;">Tapez au moins 3 caractères pour rechercher. Cliquez sur un résultat pour sélectionner.</p>
+      </div>
+      <div class="form__row">
+        <label class="label" for="appointment_date">Date <span class="required">*</span></label>
+        <input class="input input--small" id="appointment_date" name="appointment_date" type="date" required />
+      </div>
+      <div class="form__row">
+        <label class="label" for="appointment_time">Heure (optionnel)</label>
+        <input class="input input--small" id="appointment_time" name="appointment_time" type="time" placeholder="14:30" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="notes">Notes (optionnel)</label>
+        <textarea class="textarea" id="notes" name="notes" rows="2" placeholder="Motif, rappel..."></textarea>
+      </div>
+      <div class="form__actions">
+        <button class="btn" type="submit">Enregistrer le rendez-vous</button>
+      </div>
+    </form>
+  </section>
+
+  <script>
+  (function() {
+    var searchEl = document.getElementById('patient_search');
+    var patientIdEl = document.getElementById('patient_id');
+    var resultsEl = document.getElementById('patient_results');
+    var debounceTimer;
+    var cache = {};
+    var MIN_CHARS = 3;
+    var DEBOUNCE_MS = 550;
+
+    function renderResults(rows) {
+      if (rows.length === 0) {
+        resultsEl.innerHTML = '<div class="autocomplete-item muted">Aucun patient trouvé</div>';
+      } else {
+        resultsEl.innerHTML = rows.map(function(p) {
+          var name = (p.last_name || '') + ' ' + (p.first_name || '');
+          var extra = [p.date_of_birth, p.phone, p.matricule].filter(Boolean).join(' — ');
+          return '<div class="autocomplete-item" data-id="' + p.id + '" data-name="' + name.replace(/"/g, '&quot;') + '">' +
+            '<strong>' + name + '</strong>' + (extra ? '<br><span class="muted" style="font-size: 11px;">' + extra + '</span>' : '') + '</div>';
+        }).join('');
+      }
+      resultsEl.style.display = 'block';
+    }
+
+    function fetchPatients(q) {
+      if (!q || q.length < MIN_CHARS) {
+        resultsEl.style.display = 'none';
+        return;
+      }
+      var key = q.toLowerCase();
+      if (cache[key]) {
+        renderResults(cache[key]);
+        return;
+      }
+      fetch('/api/patients?q=' + encodeURIComponent(q) + '&limit=25')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var rows = data.rows || [];
+          cache[key] = rows;
+          if (Object.keys(cache).length > 50) {
+            var first = Object.keys(cache)[0];
+            delete cache[first];
+          }
+          renderResults(rows);
+        })
+        .catch(function() {
+          resultsEl.innerHTML = '<div class="autocomplete-item muted">Erreur de recherche</div>';
+          resultsEl.style.display = 'block';
+        });
+    }
+
+    searchEl.addEventListener('input', function() {
+      clearTimeout(debounceTimer);
+      var q = searchEl.value.trim();
+      patientIdEl.value = '';
+      if (q.length < MIN_CHARS) {
+        resultsEl.style.display = 'none';
+        return;
+      }
+      debounceTimer = setTimeout(function() { fetchPatients(q); }, DEBOUNCE_MS);
+    });
+
+    searchEl.addEventListener('focus', function() {
+      var q = searchEl.value.trim();
+      if (q.length >= MIN_CHARS) fetchPatients(q);
+    });
+
+    resultsEl.addEventListener('click', function(e) {
+      var item = e.target.closest('.autocomplete-item[data-id]');
+      if (item) {
+        patientIdEl.value = item.getAttribute('data-id');
+        searchEl.value = item.getAttribute('data-name');
+        resultsEl.style.display = 'none';
+      }
+    });
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.autocomplete-wrap')) {
+        resultsEl.style.display = 'none';
+      }
+    });
+  })();
+  </script>
+{% endblock %}

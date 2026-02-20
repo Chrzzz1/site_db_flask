@@ -5,17 +5,20 @@
   <section class="card">
     <div class="card__header">
       <h1>Modifier le patient</h1>
-      <a class="btn btn--ghost" href="{{ url_for('patient_detail', patient_id=patient_id) }}">Retour fiche</a>
+      <a class="btn btn--ghost" href="{{ url_for('pending_patient_detail', pending_id=patient_id) if is_pending else url_for('patient_detail', patient_id=patient_id) }}">Retour fiche</a>
     </div>
 
-    {% if not is_admin %}
+    {% if not is_admin and not is_pending %}
       <p class="muted">Votre modification sera envoyée à un administrateur pour validation avant d'être appliquée.</p>
+    {% endif %}
+    {% if is_pending %}
+      <p class="muted">Patient en attente de validation. Les modifications sont enregistrées directement.</p>
     {% endif %}
     {% if error or request.args.get('error') == 'nom-prenom-requis' %}
       <div class="alert alert--error">{% if error %}{{ error }}{% else %}Le nom et le prénom sont obligatoires.{% endif %}</div>
     {% endif %}
 
-    <form class="form" method="post" action="{{ url_for('edit_patient_submit', patient_id=patient_id) }}">
+    <form class="form" method="post" action="{{ url_for('pending_patient_edit_submit', pending_id=patient_id) if is_pending else url_for('edit_patient_submit', patient_id=patient_id) }}">
       <div class="form__grid">
         <div class="form__row">
           <label class="label" for="last_name">Nom <span class="required">*</span></label>
@@ -89,11 +92,18 @@
       </div>
 
       <h2>Fiches (optionnel)</h2>
-      <div class="form__grid form__grid--wide">
+      <p class="muted" style="margin-bottom: 12px;">Collez une URL ou importez un fichier (PDF, image) → envoi vers Drive.</p>
+      <div class="form__grid form__grid--fiches">
         {% for i in range(1, 11) %}
-          <div class="form__row">
+          <div class="form__row fiche-row">
             <label class="label" for="fiche_{{ i }}">Fiche #{{ i }}</label>
-            <input class="input" id="fiche_{{ i }}" name="fiche_{{ i }}" value="{{ patient['fiche_' ~ i] or '' }}" />
+            <div class="fiche-input-wrap">
+              <input class="input" id="fiche_{{ i }}" name="fiche_{{ i }}" value="{{ patient['fiche_' ~ i] or '' }}" />
+              <input type="file" class="fiche-upload-input" accept=".pdf,.jpg,.jpeg,.png,.webp" data-fiche-idx="{{ i }}"
+                     data-patient-id="{{ patient_id if not is_pending else '' }}"
+                     data-pending-id="{{ patient_id if is_pending else '' }}" />
+              <button type="button" class="btn btn--small btn--ghost fiche-upload-btn">Importer</button>
+            </div>
           </div>
         {% endfor %}
       </div>
@@ -104,4 +114,43 @@
       </div>
     </form>
   </section>
+
+  <script>
+  (function() {
+    document.querySelectorAll('.fiche-upload-input').forEach(function(inp) {
+      var wrap = inp.closest('.fiche-input-wrap');
+      var uploadBtn = wrap && wrap.querySelector('.fiche-upload-btn');
+      var textInput = wrap && wrap.querySelector('input.input');
+      if (!uploadBtn || !textInput) return;
+      uploadBtn.addEventListener('click', function() { inp.click(); });
+      inp.addEventListener('change', function() {
+        if (!inp.files || !inp.files[0]) return;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Envoi...';
+        var fd = new FormData();
+        fd.append('file', inp.files[0]);
+        var pid = inp.getAttribute('data-patient-id');
+        var pendId = inp.getAttribute('data-pending-id');
+        if (pid) fd.append('patient_id', pid);
+        if (pendId) fd.append('pending_id', pendId);
+        fetch('/api/upload-fiche', { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.url) {
+              textInput.value = data.url;
+              textInput.dispatchEvent(new Event('input'));
+            } else {
+              alert(data.error || 'Erreur lors de l\'upload.');
+            }
+          })
+          .catch(function() { alert('Erreur réseau.'); })
+          .finally(function() {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Importer';
+            inp.value = '';
+          });
+      });
+    });
+  })();
+  </script>
 {% endblock %}

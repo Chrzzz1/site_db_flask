@@ -27,6 +27,60 @@
     {% if request.args.get('modification_rejected') == '1' %}
       <div class="alert muted" style="border-color: var(--border);">Modification refusée.</div>
     {% endif %}
+    {% if request.args.get('pending_accepted') == '1' %}
+      <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Patient en transit accepté. Il est maintenant dans la base des patients.</div>
+    {% endif %}
+    {% if request.args.get('pending_rejected') == '1' %}
+      <div class="alert muted" style="border-color: var(--border);">Patient en transit refusé.</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Patients en attente de validation (données en transit)</h2>
+    <p class="muted">Patients ajoutés par les utilisateurs, en attente de votre validation. Ils peuvent modifier la fiche et ajouter des consultations en attendant. Accepter pour les intégrer à la base, ou refuser.</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>Nom</th>
+            <th>Prénom</th>
+            <th>Date naissance</th>
+            <th>Téléphone</th>
+            <th>Matricule</th>
+            <th>Ajouté par</th>
+            <th>Consultations</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pp in pending_patients_list %}
+            <tr>
+              <td>{{ pp.id }}</td>
+              <td>{{ pp.last_name }}</td>
+              <td>{{ pp.first_name }}</td>
+              <td>{{ pp.date_of_birth | dateonly }}</td>
+              <td>{{ pp.phone or '—' }}</td>
+              <td>{{ pp.matricule or '—' }}</td>
+              <td><strong>{{ pp.username }}</strong></td>
+              <td>{{ pp.consultations_count or 0 }}</td>
+              <td>{{ pp.created_at }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_accept_pending_patient', pending_id=pp.id) }}" style="display:inline;">
+                  <button type="submit" class="btn btn--small">Accepter</button>
+                </form>
+                <form method="post" action="{{ url_for('admin_reject_pending_patient', pending_id=pp.id) }}" style="display:inline; margin-left:6px;" onsubmit="return confirm('Refuser cet ajout ? Les données en transit seront marquées comme refusées.');">
+                  <button type="submit" class="btn btn--danger btn--small">Refuser</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="10" class="muted">Aucun patient en attente.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="card">
@@ -191,11 +245,14 @@
                 {% elif log.action == 'patient_updated' %}Modification patient
                 {% elif log.action == 'patient_deleted' %}Suppression patient
                 {% elif log.action == 'consultation_created' %}Ajout consultation
+                {% elif log.action == 'appointment_created' %}Rendez-vous créé
                 {% elif log.action == 'consultation_updated' %}Modification consultation
                 {% elif log.action == 'consultation_deleted' %}Suppression consultation
                 {% elif log.action == 'new_patient_requested' %}Demande nouveau patient
                 {% elif log.action == 'new_patient_accepted' %}Acceptation nouveau patient
                 {% elif log.action == 'new_patient_rejected' %}Refus nouveau patient
+                {% elif log.action == 'pending_patient_accepted' %}Acceptation patient en transit
+                {% elif log.action == 'pending_patient_rejected' %}Refus patient en transit
                 {% elif log.action == 'modification_accepted' %}Acceptation modification
                 {% elif log.action == 'modification_rejected' %}Refus modification
                 {% else %}{{ log.action }}{% endif %}

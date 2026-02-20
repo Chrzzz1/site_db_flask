@@ -1,0 +1,15 @@
+# Render.com - Déploiement automatique
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: site-db-flask
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT "app:app"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: "3.11"

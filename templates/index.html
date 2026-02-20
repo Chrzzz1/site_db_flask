@@ -77,18 +77,26 @@
                 <th>Téléphone</th>
                 <th>Matricule</th>
                 <th>Dernière consultation</th>
+                <th>Statut</th>
               </tr>
             </thead>
             <tbody>
               {% for r in rows %}
                 <tr>
                   <td>{{ r["id"] }}</td>
-                  <td><a href="{{ url_for('patient_detail', patient_id=r['id']) }}">{{ r["last_name"] }}</a></td>
+                  <td>
+                    {% if r.get("is_pending") %}
+                      <a href="{{ url_for('pending_patient_detail', pending_id=r['id']) }}">{{ r["last_name"] }}</a>
+                    {% else %}
+                      <a href="{{ url_for('patient_detail', patient_id=r['id']) }}">{{ r["last_name"] }}</a>
+                    {% endif %}
+                  </td>
                   <td>{{ r["first_name"] }}</td>
                   <td>{{ r["date_of_birth"] | dateonly }}</td>
                   <td>{{ r["phone"] or '—' }}</td>
                   <td>{{ r["matricule"] or '—' }}</td>
                   <td>{{ r["last_consultation_date"] | dateonly }}</td>
+                  <td>{% if r.get("is_pending") %}<span class="badge badge--warning">En attente</span>{% else %}—{% endif %}</td>
                 </tr>
               {% endfor %}
             </tbody>

@@ -97,6 +97,20 @@ python app.py
 
 En production (Render, Railway, etc.), ajoute ces variables dans les **Environment** / **Variables** du projet ; ne mets jamais le mot de passe dans le code. Un fichier **`.env.example`** à la racine du projet liste toutes les variables possibles (copier et renommer en `.env` puis remplir, ou s'en inspirer pour définir les variables à la main).
 
+### Numériser des fiches vers Google Drive
+
+Pour pouvoir importer des fiches (PDF, images) directement vers ton Drive depuis les formulaires patient :
+
+1. Créer un projet sur [Google Cloud Console](https://console.cloud.google.com/), activer l’API Google Drive
+2. Créer un **compte de service** (IAM & Admin → Comptes de service), télécharger le fichier JSON
+3. Créer un dossier dans ton Drive, le partager avec l’email du compte de service (ex. `xxx@xxx.iam.gserviceaccount.com`) avec le rôle **Éditeur**
+4. Récupérer l’ID du dossier depuis l’URL : `https://drive.google.com/drive/folders/FOLDER_ID`
+5. Variables d’environnement :
+   - `GOOGLE_DRIVE_CREDENTIALS_JSON` : chemin vers le fichier JSON
+   - `GOOGLE_DRIVE_FOLDER_ID` : ID du dossier partagé
+
+Sans cette config, le bouton « Importer » affiche une erreur, mais tu peux toujours coller une URL manuellement.
+
 ### Alternatives plus simples qu'AWS (BD hébergée en quelques clics)
 
 Si tu veux **héberger ta base PostgreSQL** sans gérer EC2, VPC ou groupes de sécurité, ces services donnent une **URL de connexion** (`DATABASE_URL`) en quelques minutes :

@@ -91,11 +91,17 @@
       </div>
 
       <h2>Fiches (optionnel)</h2>
-      <div class="form__grid form__grid--wide">
+      <p class="muted" style="margin-bottom: 12px;">Collez une URL ou importez un fichier (PDF, image) → envoi vers Drive.</p>
+      <div class="form__grid form__grid--fiches">
         {% for i in range(1, 11) %}
-          <div class="form__row">
+          <div class="form__row fiche-row">
             <label class="label" for="fiche_{{ i }}">Fiche #{{ i }}</label>
-            <input class="input" id="fiche_{{ i }}" name="fiche_{{ i }}" value="{{ request.form.get('fiche_' ~ i, '') }}" />
+            <div class="fiche-input-wrap">
+              <input class="input" id="fiche_{{ i }}" name="fiche_{{ i }}" value="{{ request.form.get('fiche_' ~ i, '') }}" />
+              <input type="file" class="fiche-upload-input" accept=".pdf,.jpg,.jpeg,.png,.webp" data-fiche-idx="{{ i }}"
+                     data-patient-id="" data-pending-id="" />
+              <button type="button" class="btn btn--small btn--ghost fiche-upload-btn">Importer</button>
+            </div>
           </div>
         {% endfor %}
       </div>
@@ -106,4 +112,43 @@
       </div>
     </form>
   </section>
+
+  <script>
+  (function() {
+    document.querySelectorAll('.fiche-upload-input').forEach(function(inp) {
+      var wrap = inp.closest('.fiche-input-wrap');
+      var uploadBtn = wrap && wrap.querySelector('.fiche-upload-btn');
+      var textInput = wrap && wrap.querySelector('input.input');
+      if (!uploadBtn || !textInput) return;
+      uploadBtn.addEventListener('click', function() { inp.click(); });
+      inp.addEventListener('change', function() {
+        if (!inp.files || !inp.files[0]) return;
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Envoi...';
+        var fd = new FormData();
+        fd.append('file', inp.files[0]);
+        var pid = inp.getAttribute('data-patient-id');
+        var pendId = inp.getAttribute('data-pending-id');
+        if (pid) fd.append('patient_id', pid);
+        if (pendId) fd.append('pending_id', pendId);
+        fetch('/api/upload-fiche', { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.url) {
+              textInput.value = data.url;
+              textInput.dispatchEvent(new Event('input'));
+            } else {
+              alert(data.error || 'Erreur lors de l\'upload.');
+            }
+          })
+          .catch(function() { alert('Erreur réseau.'); })
+          .finally(function() {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Importer';
+            inp.value = '';
+          });
+      });
+    });
+  })();
+  </script>
 {% endblock %}

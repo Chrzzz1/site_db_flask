@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set title = "Rendez-vous" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Rendez-vous</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <a class="btn" href="{{ url_for('appointment_new_form') }}">Prendre un rendez-vous</a>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn--ghost {{ 'nav__link--active' if period == 'week' else '' }}" href="{{ url_for('appointments_list', period='week') }}">Cette semaine</a>
+          <a class="btn btn--ghost {{ 'nav__link--active' if period == 'month' else '' }}" href="{{ url_for('appointments_list', period='month') }}">Ce mois</a>
+        </div>
+      </div>
+    </div>
+
+    {% if request.args.get('msg') == 'rdv-ajoute' %}
+      <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Rendez-vous ajouté.</div>
+    {% endif %}
+
+    <p class="muted">
+      {% if period == 'week' %}Prochains rendez-vous des 7 prochains jours.{% else %}Rendez-vous du mois en cours.{% endif %}
+    </p>
+
+    {% if appointments %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Heure</th>
+              <th>Patient</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in appointments %}
+              <tr>
+                <td>{{ a.appointment_date | dateonly }}</td>
+                <td>{{ a.appointment_time or '—' }}</td>
+                <td><a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}">{{ a.last_name }} {{ a.first_name }}</a></td>
+                <td>{{ a.notes or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted">Aucun rendez-vous sur cette période.</p>
+    {% endif %}
+  </section>
+{% endblock %}
