@@ -260,7 +260,20 @@ a:hover { text-decoration: underline; }
   color: var(--muted);
   margin-bottom: 4px;
 }
-.calendar-day--today .calendar-day-num { color: var(--brand); }
+.calendar-day-num--link {
+  display: inline-block;
+  text-decoration: none;
+  padding: 2px 6px;
+  margin: -2px -6px 4px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.calendar-day-num--link:hover {
+  background: rgba(0, 113, 227, 0.12);
+  color: var(--brand);
+}
+.calendar-day--today .calendar-day-num,
+.calendar-day--today .calendar-day-num--link { color: var(--brand); }
 .calendar-day-events { display: flex; flex-direction: column; gap: 4px; }
 .calendar-event {
   display: block;

@@ -36,9 +36,9 @@
           {% for cell in week %}
             <div class="calendar-day {% if not cell %}calendar-day--empty{% endif %} {% if cell and cell.strftime('%Y-%m-%d') == today_str %}calendar-day--today{% endif %}">
               {% if cell %}
-                <div class="calendar-day-num">{{ cell.day }}</div>
+                {% set date_str = cell.strftime('%Y-%m-%d') %}
+                <a href="{{ url_for('appointments_day_detail', date_str=date_str) }}" class="calendar-day-num calendar-day-num--link" title="Voir les rendez-vous du jour">{{ cell.day }}</a>
                 <div class="calendar-day-events">
-                  {% set date_str = cell.strftime('%Y-%m-%d') %}
                   {% for a in appointments_by_date.get(date_str, []) %}
                     <a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}" class="calendar-event" title="{{ a.notes or '' }}">
                       <span class="calendar-event-time">{{ a.appointment_time or '—' }}</span>

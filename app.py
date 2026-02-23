@@ -641,6 +641,41 @@ def create_app() -> Flask:
             next_url=url_for("appointments_calendar", year=next_year, month=next_month),
         )
 
+    @app.get("/appointments/day/<date_str>")
+    @login_required
+    def appointments_day_detail(date_str: str):
+        """Rendez-vous d'un jour donné avec détails (heure, patient, notes)."""
+        import re
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str):
+            return redirect(url_for("appointments_calendar"))
+        with get_engine().connect() as con:
+            rows = con.execute(
+                text(
+                    """
+                    SELECT a.id, a.patient_id, a.appointment_date, a.appointment_time, a.notes, p.last_name, p.first_name
+                    FROM appointments a
+                    JOIN patients p ON p.id = a.patient_id
+                    WHERE a.appointment_date = :d
+                    ORDER BY COALESCE(a.appointment_time, 'zzz'), a.id
+                    """
+                ),
+                {"d": date_str},
+            ).mappings().all()
+        appointments = [dict(r) for r in rows]
+        month_names = ("", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre")
+        try:
+            y, m, d = map(int, date_str.split("-"))
+            day_label = f"{d} {month_names[m]} {y}"
+        except (ValueError, IndexError):
+            day_label = date_str
+        return render_template(
+            "appointments_day.html",
+            date_str=date_str,
+            day_label=day_label,
+            appointments=appointments,
+        )
+
     @app.get("/appointments/list")
     @login_required
     def appointments_list():
@@ -691,6 +726,7 @@ def create_app() -> Flask:
             "appointment_new.html",
             preselected_patient_id=patient_id,
             preselected_name=preselected_name,
+            preselected_date=preselected_date,
             error="",
         )
 
@@ -715,6 +751,7 @@ def create_app() -> Flask:
                 "appointment_new.html",
                 preselected_patient_id=patient_id,
                 preselected_name=preselected_name,
+                preselected_date=appointment_date or None,
                 error="Patient et date obligatoires.",
             )
         with get_engine().connect() as con:

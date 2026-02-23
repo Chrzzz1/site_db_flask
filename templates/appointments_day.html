@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% set title = "Rendez-vous du " ~ day_label %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Rendez-vous du {{ day_label }}</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <a class="btn btn--ghost" href="{{ url_for('appointments_calendar') }}">Retour au calendrier</a>
+        <a class="btn" href="{{ url_for('appointment_new_form') }}?appointment_date={{ date_str }}">Prendre un rendez-vous ce jour</a>
+      </div>
+    </div>
+
+    {% if appointments %}
+      <div class="table-wrap" style="margin-top: 16px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Heure</th>
+              <th>Patient</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in appointments %}
+              <tr>
+                <td><strong>{{ a.appointment_time or '—' }}</strong></td>
+                <td><a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}">{{ a.last_name }} {{ a.first_name }}</a></td>
+                <td>{{ a.notes or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin-top: 12px;">{{ appointments|length }} rendez-vous ce jour.</p>
+    {% else %}
+      <p class="muted">Aucun rendez-vous le {{ day_label }}.</p>
+      <a class="btn btn--ghost" href="{{ url_for('appointment_new_form') }}?appointment_date={{ date_str }}">Prendre un rendez-vous</a>
+    {% endif %}
+  </section>
+{% endblock %}
