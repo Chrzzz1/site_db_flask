@@ -574,15 +574,61 @@ def create_app() -> Flask:
     @app.get("/appointments/calendar")
     @login_required
     def appointments_calendar():
-        """Calendrier type Google Agenda pour visualiser les rendez-vous."""
+        """Calendrier type Google Agenda pour visualiser les rendez-vous (mois ou semaine)."""
         from datetime import date, timedelta
         today = date.today()
+        view = (request.args.get("view") or "month").strip().lower()
+        if view == "week":
+            date_str = request.args.get("date", "").strip()
+            if date_str:
+                try:
+                    ref = datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    ref = today
+            else:
+                ref = today
+            monday = ref - timedelta(days=ref.weekday())
+            week_dates = [monday + timedelta(days=i) for i in range(7)]
+            start_str = week_dates[0].strftime("%Y-%m-%d")
+            end_str = (week_dates[-1] + timedelta(days=1)).strftime("%Y-%m-%d")
+            with get_engine().connect() as con:
+                rows = con.execute(
+                    text(
+                        """
+                        SELECT a.id, a.patient_id, a.appointment_date, a.appointment_time, a.notes, p.last_name, p.first_name
+                        FROM appointments a
+                        JOIN patients p ON p.id = a.patient_id
+                        WHERE a.appointment_date >= :start AND a.appointment_date < :end
+                        ORDER BY a.appointment_date, a.appointment_time
+                        """
+                    ),
+                    {"start": start_str, "end": end_str},
+                ).mappings().all()
+            appointments_by_date: dict[str, list] = {}
+            for r in rows:
+                d = r["appointment_date"]
+                if d not in appointments_by_date:
+                    appointments_by_date[d] = []
+                appointments_by_date[d].append(dict(r))
+            prev_monday = monday - timedelta(days=7)
+            next_monday = monday + timedelta(days=7)
+            month_names = ("", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                          "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre")
+            week_label = f"Semaine du {monday.day} {month_names[monday.month]} {monday.year}"
+            return render_template(
+                "appointments_calendar_week.html",
+                week_dates=week_dates,
+                week_label=week_label,
+                appointments_by_date=appointments_by_date,
+                today_str=today.strftime("%Y-%m-%d"),
+                prev_url=url_for("appointments_calendar", view="week", date=prev_monday.strftime("%Y-%m-%d")),
+                next_url=url_for("appointments_calendar", view="week", date=next_monday.strftime("%Y-%m-%d")),
+            )
         try:
             year = int(request.args.get("year") or today.year)
             month = int(request.args.get("month") or today.month)
         except ValueError:
             year, month = today.year, today.month
-        # Limiter la plage
         year = max(2020, min(2030, year))
         month = max(1, min(12, month))
         first = date(year, month, 1)
@@ -605,18 +651,17 @@ def create_app() -> Flask:
                 ),
                 {"start": start_str, "end": end_str},
             ).mappings().all()
-        appointments_by_date: dict[str, list] = {}
+        appointments_by_date = {}
         for r in rows:
             d = r["appointment_date"]
             if d not in appointments_by_date:
                 appointments_by_date[d] = []
             appointments_by_date[d].append(dict(r))
-        # Grille du mois (lun=0 ... dim=6)
         calendar_weeks = []
         week = [None] * 7
         for d in range(1, last.day + 1):
             dt = date(year, month, d)
-            idx = dt.weekday()  # 0=lundi, 6=dimanche
+            idx = dt.weekday()
             week[idx] = dt
             if idx == 6 or d == last.day:
                 calendar_weeks.append(week)

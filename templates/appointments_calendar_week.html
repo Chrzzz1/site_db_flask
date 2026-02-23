@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% set title = "Calendrier - Vue semaine" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Calendrier des rendez-vous</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <a class="btn" href="{{ url_for('appointment_new_form') }}">Prendre un rendez-vous</a>
+        <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Vue liste</a>
+        <div style="display: flex; gap: 4px;">
+          <a class="btn btn--ghost" href="{{ url_for('appointments_calendar') }}">Vue mois</a>
+          <span class="btn btn--ghost nav__link--active" style="cursor: default;">Vue semaine</span>
+        </div>
+      </div>
+    </div>
+
+    {% if request.args.get('msg') == 'rdv-ajoute' %}
+      <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Rendez-vous ajouté.</div>
+    {% endif %}
+
+    <div class="calendar-nav">
+      <a class="btn btn--ghost btn--small" href="{{ prev_url }}" aria-label="Semaine précédente">←</a>
+      <h2 class="calendar-title">{{ week_label }}</h2>
+      <a class="btn btn--ghost btn--small" href="{{ next_url }}" aria-label="Semaine suivante">→</a>
+    </div>
+
+    <div class="calendar-grid calendar-grid--week">
+      <div class="calendar-weekdays">
+        {% for dt in week_dates %}
+          <div class="calendar-day-name">
+            {{ ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'][dt.weekday()] }} {{ dt.day }}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="calendar-week calendar-week--single">
+        {% for dt in week_dates %}
+          {% set date_str = dt.strftime('%Y-%m-%d') %}
+          <div class="calendar-day calendar-day--week {% if date_str == today_str %}calendar-day--today{% endif %}">
+            <a href="{{ url_for('appointments_day_detail', date_str=date_str) }}" class="calendar-day-num calendar-day-num--link" title="Voir les rendez-vous du jour">{{ dt.day }} {{ ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'][dt.month-1] }}</a>
+            <div class="calendar-day-events">
+              {% for a in appointments_by_date.get(date_str, []) %}
+                <a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}" class="calendar-event" title="{{ a.notes or '' }}">
+                  <span class="calendar-event-time">{{ a.appointment_time or '—' }}</span>
+                  <span class="calendar-event-patient">{{ a.last_name }} {{ a.first_name }}</span>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endblock %}

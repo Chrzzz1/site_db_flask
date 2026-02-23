@@ -8,6 +8,10 @@
       <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
         <a class="btn" href="{{ url_for('appointment_new_form') }}">Prendre un rendez-vous</a>
         <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Vue liste</a>
+        <div style="display: flex; gap: 4px;">
+          <span class="btn btn--ghost nav__link--active" style="cursor: default;">Vue mois</span>
+          <a class="btn btn--ghost" href="{{ url_for('appointments_calendar', view='week') }}">Vue semaine</a>
+        </div>
       </div>
     </div>
 

@@ -289,6 +289,11 @@ a:hover { text-decoration: underline; }
 .calendar-event-time { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
 .calendar-event-patient { font-weight: 500; }
 
+/* Vue semaine : colonnes plus larges, cellules plus hautes */
+.calendar-grid--week .calendar-week--single { min-height: 320px; }
+.calendar-grid--week .calendar-day--week { min-height: 300px; }
+.calendar-day-name { min-width: 0; }
+
 /* Liste RDV sur page prise de rendez-vous */
 .rdv-list__items {
   list-style: none;
