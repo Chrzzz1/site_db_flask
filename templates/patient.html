@@ -62,6 +62,62 @@
 
     <section class="card">
       <div class="card__header">
+        <h2>Rendez-vous</h2>
+        <div class="muted">{{ appointments_future|length }} à venir · {{ appointments_past|length }} passés</div>
+      </div>
+      {% if appointments_future %}
+        <h3 style="font-size: 14px; margin: 0 0 8px; color: var(--brand);">À venir</h3>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Heure</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in appointments_future %}
+                <tr>
+                  <td><a href="{{ url_for('appointments_day_detail', date_str=a.appointment_date) }}">{{ a.appointment_date | dateonly }}</a></td>
+                  <td>{{ a.appointment_time or '—' }}</td>
+                  <td>{{ a.notes or '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% if appointments_past %}
+        <h3 style="font-size: 14px; margin: 16px 0 8px; color: var(--muted);">Passés</h3>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Heure</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in appointments_past %}
+                <tr>
+                  <td><a href="{{ url_for('appointments_day_detail', date_str=a.appointment_date) }}">{{ a.appointment_date | dateonly }}</a></td>
+                  <td>{{ a.appointment_time or '—' }}</td>
+                  <td>{{ a.notes or '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+      {% if not appointments_future and not appointments_past %}
+        <p class="muted">Aucun rendez-vous enregistré.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card__header">
         <h2>Consultations</h2>
         <div class="muted">{{ consultations|length }} ligne(s)</div>
       </div>

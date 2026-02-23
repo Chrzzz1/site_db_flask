@@ -713,6 +713,7 @@ def create_app() -> Flask:
     @login_required
     def appointment_new_form():
         patient_id = request.args.get("patient_id", type=int)
+        preselected_date = request.args.get("appointment_date", "").strip() or None
         preselected_name = ""
         if patient_id:
             with get_engine().connect() as con:
@@ -819,6 +820,31 @@ def create_app() -> Flask:
                 {"patient_id": patient_id},
             ).mappings().all()
 
+            appointments_rows = con.execute(
+                text(
+                    """
+                    SELECT id, appointment_date, appointment_time, notes
+                    FROM appointments
+                    WHERE patient_id = :patient_id
+                    ORDER BY appointment_date DESC, COALESCE(appointment_time, 'zzz') DESC
+                    LIMIT 100
+                    """
+                ),
+                {"patient_id": patient_id},
+            ).mappings().all()
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        appointments_past = []
+        appointments_future = []
+        for r in appointments_rows if patient else []:
+            d = r["appointment_date"]
+            row = dict(r)
+            if d < today_str:
+                appointments_past.append(row)
+            else:
+                appointments_future.append(row)
+        appointments_future.reverse()
+
         if patient is None:
             return render_template(
                 "patient.html",
@@ -838,6 +864,8 @@ def create_app() -> Flask:
             patient=patient,
             consultations=consultations,
             fiches=fiches,
+            appointments_past=appointments_past,
+            appointments_future=appointments_future,
             error=error,
         )
 
@@ -945,6 +973,8 @@ def create_app() -> Flask:
             patient=patient,
             consultations=list(consultations),
             fiches=fiches,
+            appointments_past=[],
+            appointments_future=[],
             error=error,
             is_pending=True,
             pending_id=pending_id,
