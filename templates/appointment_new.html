@@ -124,6 +124,7 @@
         });
     }
 
+    if (searchEl && resultsEl) {
     searchEl.addEventListener('input', function() {
       clearTimeout(debounceTimer);
       var q = searchEl.value.trim();
@@ -162,6 +163,7 @@
     var rdvListEl = document.getElementById('view_date_appointments');
 
     function fetchAppointmentsForDate(dateStr) {
+      if (!rdvListEl) return;
       if (!dateStr) {
         rdvListEl.innerHTML = '<p class="muted">Sélectionnez une date.</p>';
         return;
@@ -199,8 +201,10 @@
     });
 
     var today = new Date().toISOString().slice(0, 10);
-    viewDateEl.value = today;
-    fetchAppointmentsForDate(today);
+    if (viewDateEl) {
+      viewDateEl.value = today;
+      fetchAppointmentsForDate(today);
+    }
   })();
   </script>
 {% endblock %}
