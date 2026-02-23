@@ -209,7 +209,7 @@ def create_app() -> Flask:
         if session.get("user_id"):
             return redirect(url_for("index"))
         if session.get("is_admin"):
-            return redirect(url_for("admin"))
+            return redirect(url_for("admin_data"))
         return render_template("register.html", error="", request_account=True)
 
     @app.post("/register")
@@ -226,7 +226,7 @@ def create_app() -> Flask:
         if session.get("is_admin"):
             # Création de compte par l'admin : compte approuvé d'office
             def admin_redirect(err: str):
-                return redirect(url_for("admin") + "?create_error=" + quote(err))
+                return redirect(url_for("admin_create_account") + "?create_error=" + quote(err))
             if not username or not password:
                 return admin_redirect("Identifiant et mot de passe requis.")
             if len(username) < 2:
@@ -254,7 +254,7 @@ def create_app() -> Flask:
                             "is_approved": True,
                         },
                     )
-                return redirect(url_for("admin") + "?created=1")
+                return redirect(url_for("admin_create_account") + "?created=1")
             except Exception as e:
                 return admin_redirect(f"Erreur lors de la création du compte : {str(e)}")
 
@@ -380,6 +380,7 @@ def create_app() -> Flask:
     @app.get("/")
     @login_required
     def index() -> str:
+        q = (request.args.get("q") or "").strip()
         last_name = (request.args.get("last_name") or "").strip()
         first_name = (request.args.get("first_name") or "").strip()
         matricule = (request.args.get("matricule") or "").strip()
@@ -435,13 +436,19 @@ def create_app() -> Flask:
         where_parts: list[str] = []
         params: dict[str, Any] = {"limit": limit}
 
-        if last_name:
-            params["last_name_like"] = f"%{last_name}%"
-            where_parts.append("lower(p.last_name) LIKE lower(:last_name_like)")
-
-        if first_name:
-            params["first_name_like"] = f"%{first_name}%"
-            where_parts.append("lower(p.first_name) LIKE lower(:first_name_like)")
+        if q:
+            params["q_like"] = f"%{q}%"
+            where_parts.append(
+                "(lower(p.last_name) LIKE lower(:q_like) OR lower(p.first_name) LIKE lower(:q_like) "
+                "OR lower(p.last_name || ' ' || p.first_name) LIKE lower(:q_like))"
+            )
+        else:
+            if last_name:
+                params["last_name_like"] = f"%{last_name}%"
+                where_parts.append("lower(p.last_name) LIKE lower(:last_name_like)")
+            if first_name:
+                params["first_name_like"] = f"%{first_name}%"
+                where_parts.append("lower(p.first_name) LIKE lower(:first_name_like)")
 
         if matricule:
             params["matricule_like"] = f"%{matricule}%"
@@ -499,12 +506,19 @@ def create_app() -> Flask:
             """
             pending_where: list[str] = []
             pending_params: dict[str, Any] = {"uid": session.get("user_id") or 0, "limit": limit}
-            if last_name:
-                pending_params["last_name_like"] = f"%{last_name}%"
-                pending_where.append("lower(pp.last_name) LIKE lower(:last_name_like)")
-            if first_name:
-                pending_params["first_name_like"] = f"%{first_name}%"
-                pending_where.append("lower(pp.first_name) LIKE lower(:first_name_like)")
+            if q:
+                pending_params["q_like"] = f"%{q}%"
+                pending_where.append(
+                    "(lower(pp.last_name) LIKE lower(:q_like) OR lower(pp.first_name) LIKE lower(:q_like) "
+                    "OR lower(pp.last_name || ' ' || pp.first_name) LIKE lower(:q_like))"
+                )
+            else:
+                if last_name:
+                    pending_params["last_name_like"] = f"%{last_name}%"
+                    pending_where.append("lower(pp.last_name) LIKE lower(:last_name_like)")
+                if first_name:
+                    pending_params["first_name_like"] = f"%{first_name}%"
+                    pending_where.append("lower(pp.first_name) LIKE lower(:first_name_like)")
             if matricule:
                 pending_params["matricule_like"] = f"%{matricule}%"
                 pending_where.append("pp.matricule LIKE :matricule_like")
@@ -534,13 +548,13 @@ def create_app() -> Flask:
                 r["is_pending"] = True
             rows = rows + pending_rows
         else:
-            # Aucun filtre: section résultats vide par défaut
             sql_used = ""
             params_used = []
             rows = []
 
         return render_template(
             "index.html",
+            q=q,
             last_name=last_name,
             first_name=first_name,
             matricule=matricule,
@@ -557,13 +571,84 @@ def create_app() -> Flask:
 
     # ----- Rendez-vous (appointments) -----
     @app.get("/appointments")
+    @app.get("/appointments/calendar")
+    @login_required
+    def appointments_calendar():
+        """Calendrier type Google Agenda pour visualiser les rendez-vous."""
+        from datetime import date, timedelta
+        today = date.today()
+        try:
+            year = int(request.args.get("year") or today.year)
+            month = int(request.args.get("month") or today.month)
+        except ValueError:
+            year, month = today.year, today.month
+        # Limiter la plage
+        year = max(2020, min(2030, year))
+        month = max(1, min(12, month))
+        first = date(year, month, 1)
+        if month == 12:
+            last = date(year, 12, 31)
+        else:
+            last = date(year, month + 1, 1) - timedelta(days=1)
+        start_str = first.strftime("%Y-%m-%d")
+        end_str = (last + timedelta(days=1)).strftime("%Y-%m-%d")
+        with get_engine().connect() as con:
+            rows = con.execute(
+                text(
+                    """
+                    SELECT a.id, a.patient_id, a.appointment_date, a.appointment_time, a.notes, p.last_name, p.first_name
+                    FROM appointments a
+                    JOIN patients p ON p.id = a.patient_id
+                    WHERE a.appointment_date >= :start AND a.appointment_date < :end
+                    ORDER BY a.appointment_date, a.appointment_time
+                    """
+                ),
+                {"start": start_str, "end": end_str},
+            ).mappings().all()
+        appointments_by_date: dict[str, list] = {}
+        for r in rows:
+            d = r["appointment_date"]
+            if d not in appointments_by_date:
+                appointments_by_date[d] = []
+            appointments_by_date[d].append(dict(r))
+        # Grille du mois (lun=0 ... dim=6)
+        calendar_weeks = []
+        week = [None] * 7
+        for d in range(1, last.day + 1):
+            dt = date(year, month, d)
+            idx = dt.weekday()  # 0=lundi, 6=dimanche
+            week[idx] = dt
+            if idx == 6 or d == last.day:
+                calendar_weeks.append(week)
+                week = [None] * 7
+        if any(week):
+            calendar_weeks.append(week)
+        month_names = ("", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre")
+        prev_month = month - 1 if month > 1 else 12
+        prev_year = year if month > 1 else year - 1
+        next_month = month + 1 if month < 12 else 1
+        next_year = year if month < 12 else year + 1
+        return render_template(
+            "appointments_calendar.html",
+            year=year,
+            month=month,
+            month_name=month_names[month],
+            calendar_weeks=calendar_weeks,
+            appointments_by_date=appointments_by_date,
+            today_str=today.strftime("%Y-%m-%d"),
+            prev_url=url_for("appointments_calendar", year=prev_year, month=prev_month),
+            next_url=url_for("appointments_calendar", year=next_year, month=next_month),
+        )
+
+    @app.get("/appointments/list")
     @login_required
     def appointments_list():
-        period = (request.args.get("period") or "week").strip()  # week | month
+        period = (request.args.get("period") or "week").strip()
         today = datetime.now().date()
         if period == "month":
-            from datetime import date
-            end = date(today.year, today.month + 1, 1) if today.month < 12 else date(today.year + 1, 1, 1)
+            from datetime import date as d
+            end = d(today.year, today.month + 1, 1) if today.month < 12 else d(today.year + 1, 1, 1)
             end_str = end.strftime("%Y-%m-%d")
         else:
             from datetime import timedelta
@@ -635,7 +720,7 @@ def create_app() -> Flask:
         with get_engine().connect() as con:
             exists = con.execute(text("SELECT 1 FROM patients WHERE id = :id"), {"id": patient_id}).first()
         if not exists:
-            return redirect(url_for("appointments_list"))
+            return redirect(url_for("appointments_calendar"))
         with get_engine().begin() as con:
             con.execute(
                 text(
@@ -652,7 +737,7 @@ def create_app() -> Flask:
             None,
             f"Rendez-vous {appointment_date}",
         )
-        return redirect(url_for("appointments_list") + "?msg=rdv-ajoute")
+        return redirect(url_for("appointments_calendar", year=datetime.now().year, month=datetime.now().month) + "?msg=rdv-ajoute")
 
     @app.get("/patients/<int:patient_id>")
     @login_required
@@ -1282,6 +1367,35 @@ def create_app() -> Flask:
             rows = [dict(r) for r in res.mappings().all()]
         return jsonify({"count": len(rows), "rows": rows})
 
+    @app.get("/api/appointments")
+    @login_required
+    def api_appointments():
+        """Rendez-vous pour une date ou une plage. Paramètres: date=YYYY-MM-DD ou start= & end="""
+        date_val = (request.args.get("date") or "").strip()
+        start_val = (request.args.get("start") or "").strip()
+        end_val = (request.args.get("end") or "").strip()
+        if date_val and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_val):
+            start_str = date_val
+            end_str = (datetime.strptime(date_val, "%Y-%m-%d").date() + timedelta(days=1)).strftime("%Y-%m-%d")
+        elif start_val and end_val and re.fullmatch(r"\d{4}-\d{2}-\d{2}", start_val) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", end_val):
+            start_str, end_str = start_val, end_val
+        else:
+            return jsonify({"count": 0, "rows": []})
+        with get_engine().connect() as con:
+            rows = con.execute(
+                text(
+                    """
+                    SELECT a.id, a.patient_id, a.appointment_date, a.appointment_time, a.notes, p.last_name, p.first_name
+                    FROM appointments a
+                    JOIN patients p ON p.id = a.patient_id
+                    WHERE a.appointment_date >= :start AND a.appointment_date < :end
+                    ORDER BY a.appointment_date, a.appointment_time
+                    """
+                ),
+                {"start": start_str, "end": end_str},
+            ).mappings().all()
+        return jsonify({"count": len(rows), "rows": [dict(r) for r in rows]})
+
     @app.post("/api/upload-fiche")
     @login_required
     def api_upload_fiche():
@@ -1325,42 +1439,35 @@ def create_app() -> Flask:
             return jsonify({"error": "Upload non configuré ou échec. Vérifiez GOOGLE_DRIVE_CREDENTIALS_JSON et GOOGLE_DRIVE_FOLDER_ID."}), 500
         return jsonify({"url": url})
 
+    def _admin_mod_reqs_with_summary(rows):
+        mod_reqs = [dict(r) for r in rows]
+        for mr in mod_reqs:
+            if mr.get("request_type") == "new_patient" and mr.get("proposed_data"):
+                try:
+                    d = json.loads(mr["proposed_data"])
+                    mr["summary"] = f"{d.get('last_name', '')} {d.get('first_name', '')}".strip() or "—"
+                except Exception:
+                    mr["summary"] = "—"
+        return mod_reqs
+
     @app.get("/admin")
     @admin_required
     def admin():
         with get_engine().connect() as con:
-            patients = con.execute(
-                text(
-                    "SELECT id, last_name, first_name, date_of_birth, phone, matricule FROM patients ORDER BY id DESC LIMIT 200"
-                )
-            ).mappings().all()
-            consultations = con.execute(
-                text(
-                    """
-                    SELECT c.id, c.patient_id, c.consultation_date, c.consultation_detail, c.montant_acte,
-                           p.last_name, p.first_name
-                    FROM consultations c
-                    JOIN patients p ON p.id = c.patient_id
-                    ORDER BY c.id DESC LIMIT 100
-                    """
-                )
-            ).mappings().all()
-            users = con.execute(
-                text("SELECT id, username, is_admin, is_approved FROM users ORDER BY id")
-            ).mappings().all()
-            modification_requests = con.execute(
-                text(
-                    """
-                    SELECT mr.id, mr.request_type, mr.record_id, mr.user_id, mr.proposed_data, mr.status, mr.created_at, u.username,
-                           CASE WHEN mr.request_type = 'patient' THEN mr.record_id WHEN mr.request_type = 'new_patient' THEN NULL ELSE (SELECT patient_id FROM consultations WHERE id = mr.record_id) END AS patient_id
-                    FROM modification_requests mr
-                    JOIN users u ON u.id = mr.user_id
-                    WHERE mr.status = 'pending'
-                    ORDER BY mr.created_at DESC
-                    """
-                )
-            ).mappings().all()
-            # Patients en transit (table pending_patients) : l'utilisateur peut les modifier ; l'admin accepte ou refuse
+            pending_count = con.execute(text("SELECT COUNT(*) FROM pending_patients WHERE status = 'pending'")).scalar_one()
+            modifications_count = con.execute(text("SELECT COUNT(*) FROM modification_requests WHERE status = 'pending'")).scalar_one()
+            users_count = con.execute(text("SELECT COUNT(*) FROM users")).scalar_one()
+        return render_template(
+            "admin/index.html",
+            pending_count=pending_count,
+            modifications_count=modifications_count,
+            users_count=users_count,
+        )
+
+    @app.get("/admin/pending-patients")
+    @admin_required
+    def admin_pending_patients():
+        with get_engine().connect() as con:
             pending_patients_list = con.execute(
                 text(
                     """
@@ -1373,31 +1480,82 @@ def create_app() -> Flask:
                     """
                 )
             ).mappings().all()
-            try:
-                action_log_list = con.execute(
-                    text(
-                        "SELECT id, user_id, username, action, entity_type, entity_id, details, created_at FROM action_log ORDER BY created_at DESC LIMIT 300"
-                    )
-                ).mappings().all()
-            except Exception:
-                action_log_list = []
-        mod_reqs = [dict(r) for r in modification_requests]
-        for mr in mod_reqs:
-            if mr.get("request_type") == "new_patient" and mr.get("proposed_data"):
-                try:
-                    d = json.loads(mr["proposed_data"])
-                    mr["summary"] = f"{d.get('last_name', '')} {d.get('first_name', '')}".strip() or "—"
-                except Exception:
-                    mr["summary"] = "—"
         return render_template(
-            "admin.html",
+            "admin/pending_patients.html",
+            pending_patients_list=[dict(r) for r in pending_patients_list],
+        )
+
+    @app.get("/admin/modifications")
+    @admin_required
+    def admin_modifications():
+        with get_engine().connect() as con:
+            modification_requests = con.execute(
+                text(
+                    """
+                    SELECT mr.id, mr.request_type, mr.record_id, mr.user_id, mr.proposed_data, mr.status, mr.created_at, u.username,
+                           CASE WHEN mr.request_type = 'patient' THEN mr.record_id WHEN mr.request_type = 'new_patient' THEN NULL ELSE (SELECT patient_id FROM consultations WHERE id = mr.record_id) END AS patient_id
+                    FROM modification_requests mr
+                    JOIN users u ON u.id = mr.user_id
+                    WHERE mr.status = 'pending'
+                    ORDER BY mr.created_at DESC
+                    """
+                )
+            ).mappings().all()
+        return render_template(
+            "admin/modifications.html",
+            modification_requests=_admin_mod_reqs_with_summary(modification_requests),
+        )
+
+    @app.get("/admin/users")
+    @admin_required
+    def admin_users():
+        with get_engine().connect() as con:
+            users = con.execute(text("SELECT id, username, is_admin, is_approved FROM users ORDER BY id")).mappings().all()
+        return render_template(
+            "admin/users.html",
+            users=[dict(r) for r in users],
+            current_user_id=session.get("user_id"),
+        )
+
+    @app.get("/admin/create-account")
+    @admin_required
+    def admin_create_account():
+        return render_template("admin/create_account.html")
+
+    @app.get("/admin/history")
+    @admin_required
+    def admin_history():
+        try:
+            with get_engine().connect() as con:
+                action_log_list = con.execute(
+                    text("SELECT id, user_id, username, action, entity_type, entity_id, details, created_at FROM action_log ORDER BY created_at DESC LIMIT 300")
+                ).mappings().all()
+        except Exception:
+            action_log_list = []
+        return render_template("admin/history.html", action_log=[dict(r) for r in action_log_list])
+
+    @app.get("/admin/data")
+    @admin_required
+    def admin_data():
+        with get_engine().connect() as con:
+            patients = con.execute(
+                text("SELECT id, last_name, first_name, date_of_birth, phone, matricule FROM patients ORDER BY id DESC LIMIT 200")
+            ).mappings().all()
+            consultations = con.execute(
+                text(
+                    """
+                    SELECT c.id, c.patient_id, c.consultation_date, c.consultation_detail, c.montant_acte,
+                           p.last_name, p.first_name
+                    FROM consultations c
+                    JOIN patients p ON p.id = c.patient_id
+                    ORDER BY c.id DESC LIMIT 100
+                    """
+                )
+            ).mappings().all()
+        return render_template(
+            "admin/data.html",
             patients=[dict(r) for r in patients],
             consultations=[dict(r) for r in consultations],
-            users=[dict(r) for r in users],
-            modification_requests=mod_reqs,
-            pending_patients_list=[dict(r) for r in pending_patients_list],
-            action_log=[dict(r) for r in action_log_list],
-            current_user_id=session.get("user_id"),
         )
 
     @app.get("/admin/export-excel", endpoint="admin_export_excel")
@@ -1433,7 +1591,7 @@ def create_app() -> Flask:
         with get_engine().begin() as con:
             con.execute(text("DELETE FROM consultations WHERE patient_id = :pid"), {"pid": patient_id})
             con.execute(text("DELETE FROM patients WHERE id = :pid"), {"pid": patient_id})
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin_data"))
 
     @app.post("/admin/consultations/<int:consultation_id>/delete")
     @admin_required
@@ -1450,14 +1608,14 @@ def create_app() -> Flask:
             consultation_id,
             f"Consultation #{consultation_id}" + (f" (patient {c['patient_id']})" if c else ""),
         )
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin_data"))
 
     @app.post("/admin/users/<int:user_id>/set-admin")
     @admin_required
     def admin_set_admin(user_id: int):
         with get_engine().begin() as con:
             con.execute(text("UPDATE users SET is_admin = :val WHERE id = :id"), {"val": True, "id": user_id})
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin_users"))
 
     @app.post("/admin/users/<int:user_id>/remove-admin")
     @admin_required
@@ -1465,17 +1623,17 @@ def create_app() -> Flask:
         with get_engine().connect() as con:
             count = con.execute(text("SELECT COUNT(*) FROM users WHERE is_admin = :v"), {"v": True}).scalar_one()
         if count <= 1:
-            return redirect(url_for("admin") + "?error=impossible-retirer-dernier-admin")
+            return redirect(url_for("admin_users") + "?error=impossible-retirer-dernier-admin")
         with get_engine().begin() as con:
             con.execute(text("UPDATE users SET is_admin = :val WHERE id = :id"), {"val": False, "id": user_id})
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin_users"))
 
     @app.post("/admin/users/<int:user_id>/approve")
     @admin_required
     def admin_approve_user(user_id: int):
         with get_engine().begin() as con:
             con.execute(text("UPDATE users SET is_approved = :ok WHERE id = :id"), {"ok": True, "id": user_id})
-        return redirect(url_for("admin") + "?approved=1")
+        return redirect(url_for("admin_users") + "?approved=1")
 
     @app.post("/admin/pending-patients/<int:pending_id>/accept")
     @admin_required
@@ -1490,7 +1648,7 @@ def create_app() -> Flask:
                 {"id": pending_id},
             ).mappings().first()
         if not pp:
-            return redirect(url_for("admin"))
+            return redirect(url_for("admin_pending_patients"))
         pp = dict(pp)
         patient_cols = ["last_name", "first_name", "date_of_birth", "profession", "phone", "other_phone_1", "other_phone_2",
                        "address", "insurance", "matricule", "fiche_1", "fiche_2", "fiche_3", "fiche_4", "fiche_5",
@@ -1518,7 +1676,7 @@ def create_app() -> Flask:
             new_patient_id,
             f"Patient en transit accepté: {pp['last_name']} {pp['first_name']} → patient #{new_patient_id}",
         )
-        return redirect(url_for("admin") + "?pending_accepted=1")
+        return redirect(url_for("admin_pending_patients") + "?pending_accepted=1")
 
     @app.post("/admin/pending-patients/<int:pending_id>/reject")
     @admin_required
@@ -1529,7 +1687,7 @@ def create_app() -> Flask:
                 {"id": pending_id},
             ).mappings().first()
         if not pp:
-            return redirect(url_for("admin"))
+            return redirect(url_for("admin_data"))
         with get_engine().begin() as con:
             con.execute(
                 text("UPDATE pending_patients SET status = 'rejected', reviewed_at = :now, reviewed_by = :by WHERE id = :id"),
@@ -1543,7 +1701,7 @@ def create_app() -> Flask:
             pending_id,
             f"Patient en transit refusé: {pp['last_name']} {pp['first_name']}",
         )
-        return redirect(url_for("admin") + "?pending_rejected=1")
+        return redirect(url_for("admin_pending_patients") + "?pending_rejected=1")
 
     @app.post("/admin/modification-requests/<int:req_id>/accept")
     @admin_required
@@ -1557,7 +1715,7 @@ def create_app() -> Flask:
                 {"id": req_id},
             ).mappings().first()
         if not row:
-            return redirect(url_for("admin"))
+            return redirect(url_for("admin_modifications"))
         data = json.loads(row["proposed_data"])
         requester = row.get("requester_username") or "?"
         with get_engine().begin() as con:
@@ -1691,18 +1849,18 @@ def create_app() -> Flask:
     @admin_required
     def admin_delete_user(user_id: int):
         if user_id == session.get("user_id"):
-            return redirect(url_for("admin") + "?error=impossible-supprimer-votre-compte")
+            return redirect(url_for("admin_users") + "?error=impossible-supprimer-votre-compte")
         with get_engine().connect() as con:
             row = con.execute(text("SELECT is_admin FROM users WHERE id = :id"), {"id": user_id}).mappings().first()
             if not row:
-                return redirect(url_for("admin"))
+                return redirect(url_for("admin_users"))
             if row["is_admin"]:
                 count = con.execute(text("SELECT COUNT(*) FROM users WHERE is_admin = :v"), {"v": True}).scalar_one()
                 if count <= 1:
                     return redirect(url_for("admin") + "?error=impossible-supprimer-dernier-admin")
         with get_engine().begin() as con:
             con.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
-        return redirect(url_for("admin"))
+        return redirect(url_for("admin_users"))
 
     @app.post("/reset-demo-data")
     @admin_required

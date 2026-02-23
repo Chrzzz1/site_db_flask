@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Administration</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <a class="btn" href="{{ url_for('admin_export_excel') }}" target="_blank" download="export_patients.xlsx">Exporter Excel</a>
+        <a class="btn btn--ghost" href="{{ url_for('index') }}">Retour recherche</a>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-bottom: 12px;">Chaque lien ouvre une <strong>page distincte</strong>. Cliquez pour naviguer.</p>
+    <nav class="admin-nav" role="tablist" aria-label="Sections admin">
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin' else '' }}" href="{{ url_for('admin') }}" role="tab">Vue d'ensemble</a>
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin_pending_patients' else '' }}" href="{{ url_for('admin_pending_patients') }}" role="tab">Patients en attente</a>
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin_modifications' else '' }}" href="{{ url_for('admin_modifications') }}" role="tab">Modifications en attente</a>
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin_users' else '' }}" href="{{ url_for('admin_users') }}" role="tab">Comptes utilisateurs</a>
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin_create_account' else '' }}" href="{{ url_for('admin_create_account') }}" role="tab">Créer un compte</a>
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin_history' else '' }}" href="{{ url_for('admin_history') }}" role="tab">Historique des actions</a>
+      <a class="admin-nav__link {{ 'admin-nav__link--active' if request.endpoint == 'admin_data' else '' }}" href="{{ url_for('admin_data') }}" role="tab">Patients / Consultations</a>
+    </nav>
+
+    {% block admin_content %}{% endblock %}
+  </section>
+{% endblock %}

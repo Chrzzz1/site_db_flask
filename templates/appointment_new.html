@@ -5,13 +5,18 @@
   <section class="card">
     <div class="card__header">
       <h1>Prendre un rendez-vous</h1>
-      <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Retour à la liste</a>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a class="btn btn--ghost" href="{{ url_for('appointments_calendar') }}">Calendrier</a>
+        <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Vue liste</a>
+      </div>
     </div>
 
     {% if error %}
       <div class="alert alert--error">{{ error }}</div>
     {% endif %}
 
+    <div class="rdv-form-layout">
+      <div>
     <form class="form" method="post" action="{{ url_for('appointment_new_submit') }}">
       <input type="hidden" name="patient_id" id="patient_id" value="{{ preselected_patient_id or '' }}" required />
       <div class="form__row">
@@ -23,7 +28,7 @@
                  data-patient-id="{{ preselected_patient_id or '' }}" />
           <div id="patient_results" class="autocomplete-results" style="display: none;"></div>
         </div>
-        <p class="muted" style="margin-top: 4px; font-size: 12px;">Tapez au moins 3 caractères pour rechercher. Cliquez sur un résultat pour sélectionner.</p>
+        <p class="muted" style="margin-top: 4px; font-size: 12px;">Tapez le nom ou le prénom. Cliquez sur un résultat pour sélectionner.</p>
       </div>
       <div class="form__row">
         <label class="label" for="appointment_date">Date <span class="required">*</span></label>
@@ -41,6 +46,18 @@
         <button class="btn" type="submit">Enregistrer le rendez-vous</button>
       </div>
     </form>
+      </div>
+
+      <div class="card" style="margin: 0;">
+        <h2 style="margin-top: 0;">Rendez-vous du jour</h2>
+        <p class="muted">Choisissez une date pour voir les rendez-vous déjà prévus.</p>
+        <div class="form__row">
+          <label class="label" for="view_date">Date à consulter</label>
+          <input class="input input--small" id="view_date" type="date" />
+        </div>
+        <div id="view_date_appointments" class="rdv-list"></div>
+      </div>
+    </div>
   </section>
 
   <script>
@@ -50,7 +67,7 @@
     var resultsEl = document.getElementById('patient_results');
     var debounceTimer;
     var cache = {};
-    var MIN_CHARS = 3;
+    var MIN_CHARS = 1;
     var DEBOUNCE_MS = 550;
 
     function renderResults(rows) {
@@ -59,9 +76,10 @@
       } else {
         resultsEl.innerHTML = rows.map(function(p) {
           var name = (p.last_name || '') + ' ' + (p.first_name || '');
-          var extra = [p.date_of_birth, p.phone, p.matricule].filter(Boolean).join(' — ');
-          return '<div class="autocomplete-item" data-id="' + p.id + '" data-name="' + name.replace(/"/g, '&quot;') + '">' +
-            '<strong>' + name + '</strong>' + (extra ? '<br><span class="muted" style="font-size: 11px;">' + extra + '</span>' : '') + '</div>';
+          var extra = [p.date_of_birth, p.phone, p.matricule].filter(Boolean).join(' · ');
+          return '<div class="autocomplete-item" data-id="' + p.id + '" data-name="' + ('' + name).replace(/"/g, '&quot;') + '">' +
+            '<strong>' + ('' + name).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</strong>' +
+            (extra ? '<span class="autocomplete-extra">' + ('' + extra).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>' : '') + '</div>';
         }).join('');
       }
       resultsEl.style.display = 'block';
@@ -124,6 +142,52 @@
         resultsEl.style.display = 'none';
       }
     });
+
+    // Voir les RDV en fonction de la date
+    var viewDateEl = document.getElementById('view_date');
+    var appointmentDateEl = document.getElementById('appointment_date');
+    var rdvListEl = document.getElementById('view_date_appointments');
+
+    function fetchAppointmentsForDate(dateStr) {
+      if (!dateStr) {
+        rdvListEl.innerHTML = '<p class="muted">Sélectionnez une date.</p>';
+        return;
+      }
+      rdvListEl.innerHTML = '<p class="muted">Chargement…</p>';
+      fetch('/api/appointments?date=' + encodeURIComponent(dateStr))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var rows = data.rows || [];
+          if (rows.length === 0) {
+            rdvListEl.innerHTML = '<p class="muted">Aucun rendez-vous ce jour-là.</p>';
+          } else {
+            rdvListEl.innerHTML = '<ul class="rdv-list__items">' + rows.map(function(a) {
+              return '<li><a href="/patients/' + a.patient_id + '">' + (a.appointment_time || '—') + ' — ' + (a.last_name || '') + ' ' + (a.first_name || '') + '</a>' + (a.notes ? ' <span class="muted">' + a.notes + '</span>' : '') + '</li>';
+            }).join('') + '</ul>';
+          }
+        })
+        .catch(function() {
+          rdvListEl.innerHTML = '<p class="muted">Erreur.</p>';
+        });
+    }
+
+    viewDateEl.addEventListener('change', function() {
+      var d = viewDateEl.value;
+      fetchAppointmentsForDate(d);
+      if (d && !appointmentDateEl.value) appointmentDateEl.value = d;
+    });
+
+    appointmentDateEl.addEventListener('change', function() {
+      var d = appointmentDateEl.value;
+      if (d) {
+        viewDateEl.value = d;
+        fetchAppointmentsForDate(d);
+      }
+    });
+
+    var today = new Date().toISOString().slice(0, 10);
+    viewDateEl.value = today;
+    fetchAppointmentsForDate(today);
   })();
   </script>
 {% endblock %}

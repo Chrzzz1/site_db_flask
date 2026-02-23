@@ -1,0 +1,41 @@
+{% extends "admin/base_admin.html" %}
+{% set title = "Administration" %}
+
+{% block admin_content %}
+  <h2 style="margin-top: 0;">Vue d'ensemble</h2>
+  <p class="muted">Cliquez sur un lien ci-dessus pour accéder à la page correspondante.</p>
+
+  <div class="admin-dashboard" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 24px;">
+    <a href="{{ url_for('admin_pending_patients') }}" class="admin-card">
+      <span class="admin-card__title">Patients en attente</span>
+      <span class="admin-card__count">{{ pending_count }}</span>
+    </a>
+    <a href="{{ url_for('admin_modifications') }}" class="admin-card">
+      <span class="admin-card__title">Modifications en attente</span>
+      <span class="admin-card__count">{{ modifications_count }}</span>
+    </a>
+    <a href="{{ url_for('admin_users') }}" class="admin-card">
+      <span class="admin-card__title">Comptes utilisateurs</span>
+      <span class="admin-card__count">{{ users_count }}</span>
+    </a>
+    <a href="{{ url_for('admin_create_account') }}" class="admin-card">
+      <span class="admin-card__title">Créer un compte</span>
+    </a>
+    <a href="{{ url_for('admin_history') }}" class="admin-card">
+      <span class="admin-card__title">Historique des actions</span>
+    </a>
+    <a href="{{ url_for('admin_data') }}" class="admin-card">
+      <span class="admin-card__title">Patients / Consultations</span>
+    </a>
+  </div>
+
+
+  {% if request.args.get('error') %}
+    <div class="alert alert--error" style="margin-top: 20px;">
+      {% if request.args.get('error') == 'impossible-retirer-dernier-admin' %}Impossible de retirer le rôle admin : il doit rester au moins un administrateur.
+      {% elif request.args.get('error') == 'impossible-supprimer-votre-compte' %}Vous ne pouvez pas supprimer votre propre compte.
+      {% elif request.args.get('error') == 'impossible-supprimer-dernier-admin' %}Impossible de supprimer le dernier administrateur.
+      {% else %}{{ request.args.get('error') }}{% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

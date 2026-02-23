@@ -18,9 +18,10 @@
           {% if session.get('user_id') %}
             <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'index' else '' }}" href="{{ url_for('index') }}">Recherche</a>
             <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'add_patient_form' else '' }}" href="{{ url_for('add_patient_form') }}">Ajouter un patient</a>
-            <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'appointment_new_form' else '' }}" href="{{ url_for('appointment_new_form') }}">📅 Prendre un rendez-vous</a>
+            <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'appointments_calendar' or request.endpoint == 'appointments_list' else '' }}" href="{{ url_for('appointments_calendar') }}">📅 Calendrier</a>
+            <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'appointment_new_form' else '' }}" href="{{ url_for('appointment_new_form') }}">Prendre un RDV</a>
             {% if session.get('is_admin') %}
-              <a class="nav__link {{ 'nav__link--active' if request.endpoint == 'admin' else '' }}" href="{{ url_for('admin') }}">Admin</a>
+              <a class="nav__link {{ 'nav__link--active' if request.endpoint and request.endpoint.startswith('admin') else '' }}" href="{{ url_for('admin') }}">Admin</a>
             {% endif %}
             <span class="nav__user muted">{{ session.get('username', '') }}</span>
             <a class="nav__link" href="{{ url_for('logout') }}">Déconnexion</a>

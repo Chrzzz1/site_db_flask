@@ -4,9 +4,21 @@
 {% block content %}
   <section class="card">
     <h1>Recherche patients</h1>
-    <p class="muted">Remplis un ou plusieurs champs: la recherche est <strong>combinatoire</strong> (les critères se cumulent).</p>
 
+    <div class="form__row" style="margin-bottom: 16px;">
+      <label class="label" for="search_quick">Recherche rapide (nom ou prénom)</label>
+      <div class="autocomplete-wrap" style="position: relative;">
+        <input class="input" id="search_quick" type="text" autocomplete="off"
+               placeholder="Tapez pour rechercher un patient..."
+               value="{{ q or '' }}" />
+        <div id="search_quick_results" class="autocomplete-results" style="display: none;"></div>
+      </div>
+      <p class="muted" style="margin-top: 4px; font-size: 12px;">Sélectionnez un résultat pour ouvrir la fiche, ou utilisez les filtres ci‑dessous.</p>
+    </div>
+
+    <p class="muted">Filtres combinatoires (les critères se cumulent) :</p>
     <form class="form" method="get" action="{{ url_for('index') }}">
+      <input type="hidden" name="q" id="q" value="{{ q or '' }}" />
       <div class="form__row">
         <label class="label" for="last_name">Nom</label>
         <input class="input" id="last_name" name="last_name" value="{{ last_name }}" placeholder="ex: Dupont" />
@@ -57,7 +69,7 @@
     </form>
   </section>
 
-  {% set has_filters = (last_name or first_name or matricule or date_of_birth or phone) %}
+  {% set has_filters = (q or last_name or first_name or matricule or date_of_birth or phone) %}
   {% if has_filters %}
     <section class="card">
       <div class="card__header">
@@ -107,4 +119,82 @@
       {% endif %}
     </section>
   {% endif %}
+
+  <script>
+  (function() {
+    var searchEl = document.getElementById('search_quick');
+    var resultsEl = document.getElementById('search_quick_results');
+    var qHidden = document.getElementById('q');
+    var debounceTimer;
+    var cache = {};
+    var MIN_CHARS = 1;
+    var DEBOUNCE_MS = 450;
+
+    function escapeHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function renderResults(rows) {
+      if (rows.length === 0) {
+        resultsEl.innerHTML = '<div class="autocomplete-item muted">Aucun patient trouvé</div>';
+      } else {
+        resultsEl.innerHTML = rows.map(function(p) {
+          var name = (p.last_name || '') + ' ' + (p.first_name || '');
+          var extra = [p.date_of_birth, p.phone, p.matricule].filter(Boolean).join(' — ');
+          return '<a href="/patients/' + p.id + '" class="autocomplete-item" data-id="' + p.id + '">' +
+            '<strong>' + name + '</strong>' + (extra ? '<br><span class="muted" style="font-size: 11px;">' + extra + '</span>' : '') + '</a>';
+        }).join('');
+      }
+      resultsEl.style.display = 'block';
+    }
+
+    function fetchPatients(query) {
+      if (!query || query.trim().length < MIN_CHARS) {
+        resultsEl.style.display = 'none';
+        return;
+      }
+      var key = query.toLowerCase().trim();
+      if (cache[key]) {
+        renderResults(cache[key]);
+        return;
+      }
+      fetch('/api/patients?q=' + encodeURIComponent(query) + '&limit=25')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var rows = data.rows || [];
+          cache[key] = rows;
+          if (Object.keys(cache).length > 50) {
+            delete cache[Object.keys(cache)[0]];
+          }
+          renderResults(rows);
+        })
+        .catch(function() {
+          resultsEl.innerHTML = '<div class="autocomplete-item muted">Erreur</div>';
+          resultsEl.style.display = 'block';
+        });
+    }
+
+    searchEl.addEventListener('input', function() {
+      clearTimeout(debounceTimer);
+      var val = searchEl.value.trim();
+      qHidden.value = val;
+      if (val.length < MIN_CHARS) {
+        resultsEl.style.display = 'none';
+        return;
+      }
+      debounceTimer = setTimeout(function() { fetchPatients(val); }, DEBOUNCE_MS);
+    });
+
+    searchEl.addEventListener('focus', function() {
+      var val = searchEl.value.trim();
+      if (val.length >= MIN_CHARS) fetchPatients(val);
+    });
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.autocomplete-wrap')) resultsEl.style.display = 'none';
+    });
+  })();
+  </script>
 {% endblock %}

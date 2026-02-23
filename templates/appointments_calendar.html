@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set title = "Calendrier des rendez-vous" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Calendrier des rendez-vous</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <a class="btn" href="{{ url_for('appointment_new_form') }}">Prendre un rendez-vous</a>
+        <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Vue liste</a>
+      </div>
+    </div>
+
+    {% if request.args.get('msg') == 'rdv-ajoute' %}
+      <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Rendez-vous ajouté.</div>
+    {% endif %}
+
+    <div class="calendar-nav">
+      <a class="btn btn--ghost btn--small" href="{{ prev_url }}" aria-label="Mois précédent">←</a>
+      <h2 class="calendar-title">{{ month_name }} {{ year }}</h2>
+      <a class="btn btn--ghost btn--small" href="{{ next_url }}" aria-label="Mois suivant">→</a>
+    </div>
+
+    <div class="calendar-grid">
+      <div class="calendar-weekdays">
+        <div class="calendar-day-name">Lun</div>
+        <div class="calendar-day-name">Mar</div>
+        <div class="calendar-day-name">Mer</div>
+        <div class="calendar-day-name">Jeu</div>
+        <div class="calendar-day-name">Ven</div>
+        <div class="calendar-day-name">Sam</div>
+        <div class="calendar-day-name">Dim</div>
+      </div>
+      {% for week in calendar_weeks %}
+        <div class="calendar-week">
+          {% for cell in week %}
+            <div class="calendar-day {% if not cell %}calendar-day--empty{% endif %} {% if cell and cell.strftime('%Y-%m-%d') == today_str %}calendar-day--today{% endif %}">
+              {% if cell %}
+                <div class="calendar-day-num">{{ cell.day }}</div>
+                <div class="calendar-day-events">
+                  {% set date_str = cell.strftime('%Y-%m-%d') %}
+                  {% for a in appointments_by_date.get(date_str, []) %}
+                    <a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}" class="calendar-event" title="{{ a.notes or '' }}">
+                      <span class="calendar-event-time">{{ a.appointment_time or '—' }}</span>
+                      <span class="calendar-event-patient">{{ a.last_name }} {{ a.first_name }}</span>
+                    </a>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

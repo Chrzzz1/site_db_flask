@@ -1,0 +1,54 @@
+{% extends "admin/base_admin.html" %}
+{% set title = "Modifications en attente - Admin" %}
+
+{% block admin_content %}
+  <h2>Modifications en attente</h2>
+  <p class="muted">Demandes proposées par les utilisateurs. Accepter pour appliquer, ou refuser.</p>
+  {% if request.args.get('modification_accepted') == '1' %}
+    <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Modification acceptée et appliquée.</div>
+  {% endif %}
+  {% if request.args.get('modification_rejected') == '1' %}
+    <div class="alert muted" style="border-color: var(--border);">Modification refusée.</div>
+  {% endif %}
+  <div class="table-wrap" style="margin-top: 16px;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Demandé par</th>
+          <th>Type</th>
+          <th>Entrée</th>
+          <th>Date demande</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mr in modification_requests %}
+          <tr>
+            <td><strong>{{ mr.username }}</strong></td>
+            <td>{% if mr.request_type == 'new_patient' %}Nouveau patient{% elif mr.request_type == 'patient' %}Modification patient{% else %}Modification consultation{% endif %}</td>
+            <td>
+              {% if mr.request_type == 'new_patient' %}
+                {{ mr.summary or '—' }}
+              {% elif mr.patient_id %}
+                <a href="{{ url_for('patient_detail', patient_id=mr.patient_id) }}">Voir la fiche (patient #{{ mr.patient_id }})</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ mr.created_at }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin_accept_modification', req_id=mr.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn--small">Accepter</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_reject_modification', req_id=mr.id) }}" style="display:inline; margin-left:6px;" onsubmit="return confirm('Refuser cette modification ?');">
+                <button type="submit" class="btn btn--danger btn--small">Refuser</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Aucune modification en attente.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "admin/base_admin.html" %}
+{% set title = "Patients et Consultations - Admin" %}
+
+{% block admin_content %}
+  <h2>Patients (200 derniers)</h2>
+  <div class="table-wrap" style="margin-top: 16px;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>id</th>
+          <th>Nom</th>
+          <th>Prénom</th>
+          <th>Date naiss.</th>
+          <th>Téléphone</th>
+          <th>Matricule</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in patients %}
+          <tr>
+            <td>{{ p["id"] }}</td>
+            <td><a href="{{ url_for('patient_detail', patient_id=p['id']) }}">{{ p["last_name"] }}</a></td>
+            <td>{{ p["first_name"] }}</td>
+            <td>{{ p["date_of_birth"] }}</td>
+            <td>{{ p["phone"] }}</td>
+            <td>{{ p["matricule"] }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin_delete_patient', patient_id=p['id']) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce patient et toutes ses consultations ?');">
+                <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">Aucun patient.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 style="margin-top: 32px;">Consultations (100 dernières)</h2>
+  <div class="table-wrap" style="margin-top: 16px;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>id</th>
+          <th>Patient</th>
+          <th>Date</th>
+          <th>Détail</th>
+          <th>Montant acte</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in consultations %}
+          <tr>
+            <td>{{ c["id"] }}</td>
+            <td><a href="{{ url_for('patient_detail', patient_id=c['patient_id']) }}">{{ c["last_name"] }} {{ c["first_name"] }}</a></td>
+            <td>{{ c["consultation_date"] }}</td>
+            <td>{{ c["consultation_detail"] or "—" }}</td>
+            <td>{{ c["montant_acte"] }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin_delete_consultation', consultation_id=c['id']) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette consultation ?');">
+                <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="muted">Aucune consultation.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

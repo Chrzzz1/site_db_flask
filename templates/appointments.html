@@ -4,8 +4,9 @@
 {% block content %}
   <section class="card">
     <div class="card__header">
-      <h1>Rendez-vous</h1>
+      <h1>Rendez-vous (vue liste)</h1>
       <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <a class="btn btn--ghost" href="{{ url_for('appointments_calendar') }}">Calendrier</a>
         <a class="btn" href="{{ url_for('appointment_new_form') }}">Prendre un rendez-vous</a>
         <div style="display: flex; gap: 4px;">
           <a class="btn btn--ghost {{ 'nav__link--active' if period == 'week' else '' }}" href="{{ url_for('appointments_list', period='week') }}">Cette semaine</a>

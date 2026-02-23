@@ -1,0 +1,70 @@
+{% extends "admin/base_admin.html" %}
+{% set title = "Comptes utilisateurs - Admin" %}
+
+{% block admin_content %}
+  <h2>Comptes utilisateurs</h2>
+  {% if request.args.get('approved') == '1' %}
+    <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Compte accepté.</div>
+  {% endif %}
+  {% if request.args.get('error') == 'impossible-retirer-dernier-admin' %}
+    <div class="alert alert--error">Impossible de retirer le rôle admin : il doit rester au moins un administrateur.</div>
+  {% elif request.args.get('error') == 'impossible-supprimer-votre-compte' %}
+    <div class="alert alert--error">Vous ne pouvez pas supprimer votre propre compte.</div>
+  {% elif request.args.get('error') == 'impossible-supprimer-dernier-admin' %}
+    <div class="alert alert--error">Impossible de supprimer le dernier administrateur.</div>
+  {% endif %}
+  <div class="table-wrap" style="margin-top: 16px;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>id</th>
+          <th>Identifiant</th>
+          <th>Rôle</th>
+          <th>Statut</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+          <tr>
+            <td>{{ u["id"] }}</td>
+            <td>{{ u["username"] }}{% if u["id"] == current_user_id %} <span class="muted">(vous)</span>{% endif %}</td>
+            <td>{% if u["is_admin"] %}Admin{% else %}Utilisateur{% endif %}</td>
+            <td>{% if u["is_approved"] %}Approuvé{% else %}<span class="muted">En attente</span>{% endif %}</td>
+            <td>
+              {% if not u["is_approved"] and u["id"] != current_user_id %}
+                <form method="post" action="{{ url_for('admin_approve_user', user_id=u['id']) }}" style="display:inline;">
+                  <button type="submit" class="btn btn--small">Accepter</button>
+                </form>
+                <form method="post" action="{{ url_for('admin_delete_user', user_id=u['id']) }}" style="display:inline; margin-left:6px;" onsubmit="return confirm('Refuser ce compte ?');">
+                  <button type="submit" class="btn btn--danger btn--small">Refuser</button>
+                </form>
+              {% else %}
+                {% if u["is_admin"] %}
+                  {% if u["id"] != current_user_id %}
+                    <form method="post" action="{{ url_for('admin_remove_admin', user_id=u['id']) }}" style="display:inline;" onsubmit="return confirm('Retirer admin ?');">
+                      <button type="submit" class="btn btn--ghost btn--small">Retirer admin</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                {% else %}
+                  <form method="post" action="{{ url_for('admin_set_admin', user_id=u['id']) }}" style="display:inline;" onsubmit="return confirm('Donner admin ?');">
+                    <button type="submit" class="btn btn--ghost btn--small">Donner admin</button>
+                  </form>
+                {% endif %}
+                {% if u["id"] != current_user_id %}
+                  <form method="post" action="{{ url_for('admin_delete_user', user_id=u['id']) }}" style="display:inline; margin-left:6px;" onsubmit="return confirm('Supprimer ce compte ?');">
+                    <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Aucun compte.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

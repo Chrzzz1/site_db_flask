@@ -1,0 +1,36 @@
+{% extends "admin/base_admin.html" %}
+{% set title = "Créer un compte - Admin" %}
+
+{% block admin_content %}
+  <h2>Créer un compte</h2>
+  <p class="muted">Les comptes créés ici sont acceptés directement.</p>
+  {% if request.args.get('create_error') %}
+    <div class="alert alert--error">{{ request.args.get('create_error') }}</div>
+  {% endif %}
+  {% if request.args.get('created') == '1' %}
+    <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Compte créé. Le nouvel utilisateur peut se connecter.</div>
+  {% endif %}
+  <form class="form" method="post" action="{{ url_for('register_post') }}" style="max-width: 400px; margin-top: 16px;">
+    <div class="form__row">
+      <label class="label" for="new_username">Identifiant</label>
+      <input class="input" id="new_username" name="username" required minlength="2" />
+    </div>
+    <div class="form__row">
+      <label class="label" for="new_password">Mot de passe</label>
+      <input class="input" id="new_password" name="password" type="password" required minlength="6" />
+    </div>
+    <div class="form__row">
+      <label class="label" for="new_password2">Confirmer le mot de passe</label>
+      <input class="input" id="new_password2" name="password2" type="password" required />
+    </div>
+    <div class="form__row">
+      <label style="display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" name="is_admin" value="on" />
+        <span>Créer comme administrateur</span>
+      </label>
+    </div>
+    <div class="form__actions">
+      <button class="btn" type="submit">Créer le compte</button>
+    </div>
+  </form>
+{% endblock %}
