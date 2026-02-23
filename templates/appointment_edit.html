@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% set title = "Modifier le rendez-vous" %}
+
+{% block content %}
+  <section class="card">
+    <div class="card__header">
+      <h1>Modifier le rendez-vous</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% if is_pending %}
+        <a class="btn btn--ghost" href="{{ url_for('pending_patient_detail', pending_id=appointment.pending_patient_id) }}">Retour au patient</a>
+        {% else %}
+        <a class="btn btn--ghost" href="{{ url_for('patient_detail', patient_id=appointment.patient_id) }}">Retour au patient</a>
+        {% endif %}
+        <a class="btn btn--ghost" href="{{ url_for('appointments_calendar') }}">Calendrier</a>
+      </div>
+    </div>
+
+    {% if request.args.get('error') == 'date-requise' %}
+      <div class="alert alert--error">La date est obligatoire.</div>
+    {% endif %}
+
+    <p class="muted">Patient : {{ appointment.last_name }} {{ appointment.first_name }}</p>
+
+    <form class="form" method="post" action="{{ url_for('pending_appointment_edit_submit', pa_id=appointment.id) if is_pending else url_for('appointment_edit_submit', appointment_id=appointment.id) }}">
+      <div class="form__row">
+        <label class="label" for="appointment_date">Date <span class="required">*</span></label>
+        <input class="input input--small" id="appointment_date" name="appointment_date" type="date" value="{{ appointment.appointment_date }}" required />
+      </div>
+      <div class="form__row">
+        <label class="label" for="appointment_time">Heure (optionnel)</label>
+        <input class="input input--small" id="appointment_time" name="appointment_time" type="time" value="{{ appointment.appointment_time or '' }}" />
+      </div>
+      <div class="form__row">
+        <label class="label" for="notes">Notes (optionnel)</label>
+        <textarea class="textarea" id="notes" name="notes" rows="2" placeholder="Motif, rappel...">{{ appointment.notes or '' }}</textarea>
+      </div>
+      <div class="form__actions">
+        <button class="btn" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

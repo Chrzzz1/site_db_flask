@@ -21,6 +21,7 @@
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           {% if is_pending %}
             <a class="btn btn--ghost" href="{{ url_for('pending_patient_edit_form', pending_id=pending_id) }}">Modifier le patient</a>
+            <a class="btn btn--ghost" href="{{ url_for('appointment_new_form', pending_id=pending_id) }}">Prendre un rendez-vous</a>
           {% else %}
             <a class="btn btn--ghost" href="{{ url_for('edit_patient_form', patient_id=patient['id']) }}">Modifier le patient</a>
             <a class="btn btn--ghost" href="{{ url_for('appointment_new_form', patient_id=patient['id']) }}">Prendre un rendez-vous</a>
@@ -29,7 +30,19 @@
         </div>
       </div>
       {% if is_pending %}
-        <div class="alert muted" style="border-color: var(--border);">Ce patient est en attente de validation par un administrateur. Vous pouvez le modifier et ajouter des consultations en attendant.</div>
+        <div class="alert muted" style="border-color: var(--border);">Ce patient est en attente de validation par un administrateur. Vous pouvez le modifier, ajouter des consultations et prendre des rendez-vous en attendant.</div>
+      {% endif %}
+      {% if is_pending and request.args.get('msg') == 'rdv-ajoute' %}
+        <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Rendez-vous ajouté.</div>
+      {% endif %}
+      {% if request.args.get('msg') == 'rdv-modifie' %}
+        <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Rendez-vous modifié.</div>
+      {% endif %}
+      {% if request.args.get('msg') == 'rdv-supprime' %}
+        <div class="alert muted" style="border-color: var(--border);">Rendez-vous supprimé.</div>
+      {% endif %}
+      {% if request.args.get('msg') == 'consultation-modifiee' %}
+        <div class="alert" style="background: rgba(0,128,0,0.1); border-color: rgba(0,128,0,0.3);">Consultation modifiée.</div>
       {% endif %}
       {% if not is_pending and request.args.get('msg') == 'modification-en-attente' %}
         <div class="alert muted" style="border-color: var(--border);">Votre modification a été envoyée. Un administrateur doit l'accepter pour qu'elle soit appliquée.</div>
@@ -74,14 +87,28 @@
                 <th>Date</th>
                 <th>Heure</th>
                 <th>Notes</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {% for a in appointments_future %}
                 <tr>
-                  <td><a href="{{ url_for('appointments_day_detail', date_str=a.appointment_date) }}">{{ a.appointment_date | dateonly }}</a></td>
+                  <td><a href="{{ url_for('appointments_day_detail', date_str=a.appointment_date) if not is_pending else '#' }}">{{ a.appointment_date | dateonly }}</a></td>
                   <td>{{ a.appointment_time or '—' }}</td>
                   <td>{{ a.notes or '—' }}</td>
+                  <td>
+                    {% if is_pending %}
+                    <a class="btn btn--ghost btn--small" href="{{ url_for('pending_appointment_edit_form', pa_id=a.id) }}">Modifier</a>
+                    <form method="post" action="{{ url_for('pending_appointment_delete', pa_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce rendez-vous ?');">
+                      <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+                    </form>
+                    {% else %}
+                    <a class="btn btn--ghost btn--small" href="{{ url_for('appointment_edit_form', appointment_id=a.id) }}">Modifier</a>
+                    <form method="post" action="{{ url_for('appointment_delete', appointment_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce rendez-vous ?');">
+                      <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+                    </form>
+                    {% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -97,14 +124,28 @@
                 <th>Date</th>
                 <th>Heure</th>
                 <th>Notes</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {% for a in appointments_past %}
                 <tr>
-                  <td><a href="{{ url_for('appointments_day_detail', date_str=a.appointment_date) }}">{{ a.appointment_date | dateonly }}</a></td>
+                  <td><a href="{{ url_for('appointments_day_detail', date_str=a.appointment_date) if not is_pending else '#' }}">{{ a.appointment_date | dateonly }}</a></td>
                   <td>{{ a.appointment_time or '—' }}</td>
                   <td>{{ a.notes or '—' }}</td>
+                  <td>
+                    {% if is_pending %}
+                    <a class="btn btn--ghost btn--small" href="{{ url_for('pending_appointment_edit_form', pa_id=a.id) }}">Modifier</a>
+                    <form method="post" action="{{ url_for('pending_appointment_delete', pa_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce rendez-vous ?');">
+                      <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+                    </form>
+                    {% else %}
+                    <a class="btn btn--ghost btn--small" href="{{ url_for('appointment_edit_form', appointment_id=a.id) }}">Modifier</a>
+                    <form method="post" action="{{ url_for('appointment_delete', appointment_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce rendez-vous ?');">
+                      <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+                    </form>
+                    {% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -141,6 +182,13 @@
                   <td>{{ c["consultation_detail"] or "—" }}</td>
                   <td>{{ c["montant_acte"] if c["montant_acte"] is not none else "—" }}</td>
                   <td>{{ c["montant_recu"] if c["montant_recu"] is not none else "—" }}</td>
+                  <td>
+                    {% if is_pending %}
+                    <a class="btn btn--ghost btn--small" href="{{ url_for('pending_consultation_edit_form', pc_id=c.id) }}">Modifier</a>
+                    {% else %}
+                    <a class="btn btn--ghost btn--small" href="{{ url_for('edit_consultation_form', consultation_id=c.id) }}">Modifier</a>
+                    {% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>

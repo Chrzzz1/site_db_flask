@@ -19,6 +19,7 @@
               <th>Heure</th>
               <th>Patient</th>
               <th>Notes</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -27,6 +28,12 @@
                 <td><strong>{{ a.appointment_time or '—' }}</strong></td>
                 <td><a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}">{{ a.last_name }} {{ a.first_name }}</a></td>
                 <td>{{ a.notes or '—' }}</td>
+                <td>
+                  <a class="btn btn--ghost btn--small" href="{{ url_for('appointment_edit_form', appointment_id=a.id) }}">Modifier</a>
+                  <form method="post" action="{{ url_for('appointment_delete', appointment_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce rendez-vous ?');">
+                    <button type="submit" class="btn btn--danger btn--small">Supprimer</button>
+                  </form>
+                </td>
               </tr>
             {% endfor %}
           </tbody>

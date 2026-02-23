@@ -713,7 +713,83 @@ def create_app() -> Flask:
     @login_required
     def appointment_new_form():
         patient_id = request.args.get("patient_id", type=int)
+        pending_id = request.args.get("pending_id", type=int)
         preselected_date = request.args.get("appointment_date", "").strip() or None
+        preselected_name = ""
+        preselected_pending_name = ""
+        if patient_id:
+            with get_engine().connect() as con:
+                row = con.execute(
+                    text("SELECT last_name, first_name FROM patients WHERE id = :id"),
+                    {"id": patient_id},
+                ).mappings().first()
+                if row:
+                    preselected_name = f"{row['last_name']} {row['first_name']}"
+        elif pending_id and session.get("user_id"):
+            with get_engine().connect() as con:
+                row = con.execute(
+                    text("SELECT last_name, first_name FROM pending_patients WHERE id = :id AND user_id = :uid AND status = 'pending'"),
+                    {"id": pending_id, "uid": session["user_id"]},
+                ).mappings().first()
+                if row:
+                    preselected_pending_name = f"{row['last_name']} {row['first_name']}"
+                else:
+                    pending_id = None
+        return render_template(
+            "appointment_new.html",
+            preselected_patient_id=patient_id,
+            preselected_pending_id=pending_id,
+            preselected_name=preselected_name,
+            preselected_pending_name=preselected_pending_name,
+            preselected_date=preselected_date,
+            error="",
+        )
+
+    @app.post("/appointments/new")
+    @login_required
+    def appointment_new_submit():
+        patient_id = request.form.get("patient_id", type=int)
+        pending_id = request.form.get("pending_id", type=int)
+        appointment_date = (request.form.get("appointment_date") or "").strip()
+        appointment_time = (request.form.get("appointment_time") or "").strip() or None
+        notes = (request.form.get("notes") or "").strip() or None
+        if not appointment_date:
+            return render_template(
+                "appointment_new.html",
+                preselected_patient_id=patient_id,
+                preselected_pending_id=pending_id,
+                preselected_name="",
+                preselected_pending_name="",
+                preselected_date=appointment_date or None,
+                error="Date obligatoire.",
+            )
+        if pending_id:
+            with get_engine().connect() as con:
+                row = con.execute(
+                    text("SELECT id FROM pending_patients WHERE id = :id AND user_id = :uid AND status = 'pending'"),
+                    {"id": pending_id, "uid": session.get("user_id")},
+                ).mappings().first()
+            if not row:
+                return redirect(url_for("appointments_calendar"))
+            with get_engine().begin() as con:
+                con.execute(
+                    text(
+                        "INSERT INTO pending_appointments (pending_patient_id, appointment_date, appointment_time, notes) "
+                        "VALUES (:pid, :d, :t, :n)"
+                    ),
+                    {"pid": pending_id, "d": appointment_date, "t": appointment_time, "n": notes},
+                )
+            return redirect(url_for("pending_patient_detail", pending_id=pending_id) + "?msg=rdv-ajoute")
+        if not patient_id:
+            return render_template(
+                "appointment_new.html",
+                preselected_patient_id=patient_id,
+                preselected_pending_id=None,
+                preselected_name="",
+                preselected_pending_name="",
+                preselected_date=appointment_date or None,
+                error="Patient et date obligatoires.",
+            )
         preselected_name = ""
         if patient_id:
             with get_engine().connect() as con:
@@ -723,38 +799,6 @@ def create_app() -> Flask:
                 ).mappings().first()
                 if row:
                     preselected_name = f"{row['last_name']} {row['first_name']}"
-        return render_template(
-            "appointment_new.html",
-            preselected_patient_id=patient_id,
-            preselected_name=preselected_name,
-            preselected_date=preselected_date,
-            error="",
-        )
-
-    @app.post("/appointments/new")
-    @login_required
-    def appointment_new_submit():
-        patient_id = request.form.get("patient_id", type=int)
-        appointment_date = (request.form.get("appointment_date") or "").strip()
-        appointment_time = (request.form.get("appointment_time") or "").strip() or None
-        notes = (request.form.get("notes") or "").strip() or None
-        if not patient_id or not appointment_date:
-            preselected_name = ""
-            if patient_id:
-                with get_engine().connect() as con:
-                    row = con.execute(
-                        text("SELECT last_name, first_name FROM patients WHERE id = :id"),
-                        {"id": patient_id},
-                    ).mappings().first()
-                    if row:
-                        preselected_name = f"{row['last_name']} {row['first_name']}"
-            return render_template(
-                "appointment_new.html",
-                preselected_patient_id=patient_id,
-                preselected_name=preselected_name,
-                preselected_date=appointment_date or None,
-                error="Patient et date obligatoires.",
-            )
         with get_engine().connect() as con:
             exists = con.execute(text("SELECT 1 FROM patients WHERE id = :id"), {"id": patient_id}).first()
         if not exists:
@@ -776,6 +820,133 @@ def create_app() -> Flask:
             f"Rendez-vous {appointment_date}",
         )
         return redirect(url_for("appointments_calendar", year=datetime.now().year, month=datetime.now().month) + "?msg=rdv-ajoute")
+
+    @app.get("/appointments/<int:appointment_id>/edit")
+    @login_required
+    def appointment_edit_form(appointment_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT a.id, a.patient_id, a.appointment_date, a.appointment_time, a.notes, p.last_name, p.first_name "
+                    "FROM appointments a JOIN patients p ON p.id = a.patient_id WHERE a.id = :id"
+                ),
+                {"id": appointment_id},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("appointments_calendar"))
+        return render_template(
+            "appointment_edit.html",
+            appointment=dict(row),
+            is_pending=False,
+        )
+
+    @app.post("/appointments/<int:appointment_id>/edit")
+    @login_required
+    def appointment_edit_submit(appointment_id: int):
+        appointment_date = (request.form.get("appointment_date") or "").strip()
+        appointment_time = (request.form.get("appointment_time") or "").strip() or None
+        notes = (request.form.get("notes") or "").strip() or None
+        if not appointment_date:
+            return redirect(url_for("appointment_edit_form", appointment_id=appointment_id) + "?error=date-requise")
+        with get_engine().connect() as con:
+            row = con.execute(
+                text("SELECT patient_id FROM appointments WHERE id = :id"),
+                {"id": appointment_id},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("appointments_calendar"))
+        patient_id = row["patient_id"]
+        with get_engine().begin() as con:
+            con.execute(
+                text(
+                    "UPDATE appointments SET appointment_date = :d, appointment_time = :t, notes = :n WHERE id = :id"
+                ),
+                {"d": appointment_date, "t": appointment_time, "n": notes, "id": appointment_id},
+            )
+        return redirect(url_for("patient_detail", patient_id=patient_id) + "?msg=rdv-modifie")
+
+    @app.post("/appointments/<int:appointment_id>/delete")
+    @login_required
+    def appointment_delete(appointment_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text("SELECT patient_id FROM appointments WHERE id = :id"),
+                {"id": appointment_id},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("appointments_calendar"))
+        patient_id = row["patient_id"]
+        with get_engine().begin() as con:
+            con.execute(text("DELETE FROM appointments WHERE id = :id"), {"id": appointment_id})
+        return redirect(url_for("patient_detail", patient_id=patient_id) + "?msg=rdv-supprime")
+
+    @app.get("/pending-appointments/<int:pa_id>/edit")
+    @login_required
+    def pending_appointment_edit_form(pa_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT pa.id, pa.pending_patient_id, pa.appointment_date, pa.appointment_time, pa.notes, pp.last_name, pp.first_name "
+                    "FROM pending_appointments pa JOIN pending_patients pp ON pp.id = pa.pending_patient_id "
+                    "WHERE pa.id = :id AND pp.user_id = :uid AND pp.status = 'pending'"
+                ),
+                {"id": pa_id, "uid": session.get("user_id")},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("index"))
+        return render_template(
+            "appointment_edit.html",
+            appointment={"id": row["id"], "pending_patient_id": row["pending_patient_id"], "appointment_date": row["appointment_date"], "appointment_time": row["appointment_time"], "notes": row["notes"], "last_name": row["last_name"], "first_name": row["first_name"]},
+            is_pending=True,
+        )
+
+    @app.post("/pending-appointments/<int:pa_id>/edit")
+    @login_required
+    def pending_appointment_edit_submit(pa_id: int):
+        appointment_date = (request.form.get("appointment_date") or "").strip()
+        appointment_time = (request.form.get("appointment_time") or "").strip() or None
+        notes = (request.form.get("notes") or "").strip() or None
+        if not appointment_date:
+            return redirect(url_for("pending_appointment_edit_form", pa_id=pa_id) + "?error=date-requise")
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT pa.pending_patient_id FROM pending_appointments pa "
+                    "JOIN pending_patients pp ON pp.id = pa.pending_patient_id "
+                    "WHERE pa.id = :id AND pp.user_id = :uid"
+                ),
+                {"id": pa_id, "uid": session.get("user_id")},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("index"))
+        pending_id = row["pending_patient_id"]
+        with get_engine().begin() as con:
+            con.execute(
+                text(
+                    "UPDATE pending_appointments SET appointment_date = :d, appointment_time = :t, notes = :n WHERE id = :id"
+                ),
+                {"d": appointment_date, "t": appointment_time, "n": notes, "id": pa_id},
+            )
+        return redirect(url_for("pending_patient_detail", pending_id=pending_id) + "?msg=rdv-modifie")
+
+    @app.post("/pending-appointments/<int:pa_id>/delete")
+    @login_required
+    def pending_appointment_delete(pa_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT pa.pending_patient_id FROM pending_appointments pa "
+                    "JOIN pending_patients pp ON pp.id = pa.pending_patient_id "
+                    "WHERE pa.id = :id AND pp.user_id = :uid"
+                ),
+                {"id": pa_id, "uid": session.get("user_id")},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("index"))
+        pending_id = row["pending_patient_id"]
+        with get_engine().begin() as con:
+            con.execute(text("DELETE FROM pending_appointments WHERE id = :id"), {"id": pa_id})
+        return redirect(url_for("pending_patient_detail", pending_id=pending_id) + "?msg=rdv-supprime")
 
     @app.get("/patients/<int:patient_id>")
     @login_required
@@ -963,6 +1134,24 @@ def create_app() -> Flask:
                 ),
                 {"pid": pending_id},
             ).mappings().all()
+            pa_rows = con.execute(
+                text(
+                    "SELECT id, appointment_date, appointment_time, notes FROM pending_appointments "
+                    "WHERE pending_patient_id = :pid ORDER BY appointment_date DESC, COALESCE(appointment_time, 'zzz') DESC LIMIT 100"
+                ),
+                {"pid": pending_id},
+            ).mappings().all()
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        appointments_past = []
+        appointments_future = []
+        for r in pa_rows:
+            d = r["appointment_date"]
+            row_d = dict(r)
+            if d < today_str:
+                appointments_past.append(row_d)
+            else:
+                appointments_future.append(row_d)
+        appointments_future.reverse()
         fiches = [
             (i, _normalize_fiche_url(patient.get(f"fiche_{i}")))
             for i in range(1, 11)
@@ -973,8 +1162,8 @@ def create_app() -> Flask:
             patient=patient,
             consultations=list(consultations),
             fiches=fiches,
-            appointments_past=[],
-            appointments_future=[],
+            appointments_past=appointments_past,
+            appointments_future=appointments_future,
             error=error,
             is_pending=True,
             pending_id=pending_id,
@@ -1013,6 +1202,68 @@ def create_app() -> Flask:
                 {"pid": pending_id, "d": consultation_date, "det": consultation_detail, "ma": montant_acte, "mr": montant_recu},
             )
         return redirect(url_for("pending_patient_detail", pending_id=pending_id))
+
+    @app.get("/pending-consultations/<int:pc_id>/edit")
+    @login_required
+    def pending_consultation_edit_form(pc_id: int):
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT pc.id, pc.pending_patient_id, pc.consultation_date, pc.consultation_detail, pc.montant_acte, pc.montant_recu "
+                    "FROM pending_consultations pc JOIN pending_patients pp ON pp.id = pc.pending_patient_id "
+                    "WHERE pc.id = :id AND pp.user_id = :uid AND pp.status = 'pending'"
+                ),
+                {"id": pc_id, "uid": session.get("user_id")},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("index"))
+        return render_template(
+            "edit_consultation.html",
+            consultation=dict(row),
+            consultation_id=pc_id,
+            patient_id=row["pending_patient_id"],
+            is_admin=True,
+            is_pending_consultation=True,
+            error="",
+        )
+
+    @app.post("/pending-consultations/<int:pc_id>/edit")
+    @login_required
+    def pending_consultation_edit_submit(pc_id: int):
+        consultation_date = (request.form.get("consultation_date") or "").strip()
+        consultation_detail = (request.form.get("consultation_detail") or "").strip() or None
+        montant_acte_raw = (request.form.get("montant_acte") or "").strip()
+        montant_recu_raw = (request.form.get("montant_recu") or "").strip()
+        if not consultation_date:
+            return redirect(url_for("pending_consultation_edit_form", pc_id=pc_id) + "?error=date-requise")
+        def _parse(v: str) -> float | None:
+            if not v:
+                return None
+            return float(v.replace(",", "."))
+        try:
+            montant_acte, montant_recu = _parse(montant_acte_raw), _parse(montant_recu_raw)
+        except ValueError:
+            return redirect(url_for("pending_consultation_edit_form", pc_id=pc_id) + "?error=montant-invalide")
+        with get_engine().connect() as con:
+            row = con.execute(
+                text(
+                    "SELECT pc.pending_patient_id FROM pending_consultations pc "
+                    "JOIN pending_patients pp ON pp.id = pc.pending_patient_id "
+                    "WHERE pc.id = :id AND pp.user_id = :uid"
+                ),
+                {"id": pc_id, "uid": session.get("user_id")},
+            ).mappings().first()
+        if not row:
+            return redirect(url_for("index"))
+        pending_id = row["pending_patient_id"]
+        with get_engine().begin() as con:
+            con.execute(
+                text(
+                    "UPDATE pending_consultations SET consultation_date=:d, consultation_detail=:det, montant_acte=:ma, montant_recu=:mr WHERE id=:id"
+                ),
+                {"id": pc_id, "d": consultation_date, "det": consultation_detail, "ma": montant_acte, "mr": montant_recu},
+            )
+        return redirect(url_for("pending_patient_detail", pending_id=pending_id) + "?msg=consultation-modifiee")
 
     @app.get("/pending-patients/<int:pending_id>/edit")
     @login_required
@@ -1216,6 +1467,7 @@ def create_app() -> Flask:
             consultation_id=consultation_id,
             patient_id=c["patient_id"],
             is_admin=session.get("is_admin"),
+            is_pending_consultation=False,
             error="",
         )
 
@@ -1256,7 +1508,7 @@ def create_app() -> Flask:
                     ),
                     {"id": consultation_id, "d": consultation_date, "det": consultation_detail, "ma": montant_acte, "mr": montant_recu},
                 )
-            return redirect(url_for("patient_detail", patient_id=patient_id))
+            return redirect(url_for("patient_detail", patient_id=patient_id) + "?msg=consultation-modifiee")
         with get_engine().begin() as con:
             con.execute(
                 text(
@@ -1732,6 +1984,13 @@ def create_app() -> Flask:
                 {"new_pid": new_patient_id, "pid": pending_id},
             )
             con.execute(
+                text(
+                    "INSERT INTO appointments (patient_id, appointment_date, appointment_time, notes) "
+                    "SELECT :new_pid, appointment_date, appointment_time, notes FROM pending_appointments WHERE pending_patient_id = :pid"
+                ),
+                {"new_pid": new_patient_id, "pid": pending_id},
+            )
+            con.execute(
                 text("UPDATE pending_patients SET status = 'accepted', reviewed_at = :now, reviewed_by = :by WHERE id = :id"),
                 {"id": pending_id, "now": datetime.now(timezone.utc), "by": session.get("user_id")},
             )
@@ -2121,6 +2380,21 @@ def get_metadata() -> MetaData:
         Column("montant_recu", Float),
         Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
     )
+    pending_appointments = Table(
+        "pending_appointments",
+        md,
+        Column("id", Integer, primary_key=True, autoincrement=True),
+        Column(
+            "pending_patient_id",
+            Integer,
+            ForeignKey("pending_patients.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        Column("appointment_date", String(50), nullable=False),
+        Column("appointment_time", String(10)),
+        Column("notes", String(500)),
+        Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
 
     Index("idx_patients_name", patients.c.last_name, patients.c.first_name)
     Index("idx_patients_phone", patients.c.phone)
@@ -2260,6 +2534,36 @@ def init_db(force_reset: bool = False) -> None:
                         con.commit()
         except Exception:
             con.rollback()
+
+    # Migration: créer pending_appointments si absente
+    with engine.connect() as con:
+        try:
+            con.execute(text("SELECT 1 FROM pending_appointments LIMIT 1"))
+        except Exception:
+            con.rollback()
+            with engine.begin() as c2:
+                if "postgresql" in db_url:
+                    c2.execute(text(
+                        "CREATE TABLE IF NOT EXISTS pending_appointments ("
+                        "id SERIAL PRIMARY KEY, "
+                        "pending_patient_id INTEGER NOT NULL REFERENCES pending_patients(id) ON DELETE CASCADE, "
+                        "appointment_date VARCHAR(50) NOT NULL, "
+                        "appointment_time VARCHAR(10), "
+                        "notes VARCHAR(500), "
+                        "created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL"
+                        ")"
+                    ))
+                else:
+                    c2.execute(text(
+                        "CREATE TABLE IF NOT EXISTS pending_appointments ("
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        "pending_patient_id INTEGER NOT NULL REFERENCES pending_patients(id) ON DELETE CASCADE, "
+                        "appointment_date VARCHAR(50) NOT NULL, "
+                        "appointment_time VARCHAR(10), "
+                        "notes VARCHAR(500), "
+                        "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL"
+                        ")"
+                    ))
 
     with engine.begin() as con:
         count = int(con.execute(text("SELECT COUNT(*) FROM patients")).scalar_one())

@@ -5,17 +5,17 @@
   <section class="card">
     <div class="card__header">
       <h1>Modifier la consultation</h1>
-      <a class="btn btn--ghost" href="{{ url_for('patient_detail', patient_id=patient_id) }}">Retour fiche patient</a>
+      <a class="btn btn--ghost" href="{{ url_for('pending_patient_detail', pending_id=patient_id) if is_pending_consultation else url_for('patient_detail', patient_id=patient_id) }}">Retour fiche patient</a>
     </div>
 
-    {% if not is_admin %}
+    {% if not is_admin and not is_pending_consultation %}
       <p class="muted">Votre modification sera envoyée à un administrateur pour validation avant d'être appliquée.</p>
     {% endif %}
     {% if error or request.args.get('error') == 'date-requise' %}
       <div class="alert alert--error">{% if error %}{{ error }}{% else %}La date de consultation est obligatoire.{% endif %}</div>
     {% endif %}
 
-    <form class="form" method="post" action="{{ url_for('edit_consultation_submit', consultation_id=consultation_id) }}">
+    <form class="form" method="post" action="{{ url_for('pending_consultation_edit_submit', pc_id=consultation_id) if is_pending_consultation else url_for('edit_consultation_submit', consultation_id=consultation_id) }}">
       <div class="form__row">
         <label class="label" for="consultation_date">Date de consultation <span class="required">*</span></label>
         <input class="input input--small" id="consultation_date" name="consultation_date" type="date" value="{{ consultation.consultation_date or '' }}" required />
@@ -34,7 +34,7 @@
       </div>
       <div class="form__actions">
         <button class="btn" type="submit">{% if is_admin %}Enregistrer les modifications{% else %}Proposer la modification{% endif %}</button>
-        <a class="btn btn--ghost" href="{{ url_for('patient_detail', patient_id=patient_id) }}">Annuler</a>
+        <a class="btn btn--ghost" href="{{ url_for('pending_patient_detail', pending_id=patient_id) if is_pending_consultation else url_for('patient_detail', patient_id=patient_id) }}">Annuler</a>
       </div>
     </form>
   </section>

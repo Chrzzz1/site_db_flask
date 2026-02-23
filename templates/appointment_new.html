@@ -6,6 +6,9 @@
     <div class="card__header">
       <h1>Prendre un rendez-vous</h1>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% if preselected_pending_id %}
+        <a class="btn btn--ghost" href="{{ url_for('pending_patient_detail', pending_id=preselected_pending_id) }}">Retour au patient</a>
+        {% endif %}
         <a class="btn btn--ghost" href="{{ url_for('appointments_calendar') }}">Calendrier</a>
         <a class="btn btn--ghost" href="{{ url_for('appointments_list') }}">Vue liste</a>
       </div>
@@ -18,7 +21,14 @@
     <div class="rdv-form-layout">
       <div>
     <form class="form" method="post" action="{{ url_for('appointment_new_submit') }}">
-      <input type="hidden" name="patient_id" id="patient_id" value="{{ preselected_patient_id or '' }}" required />
+      <input type="hidden" name="patient_id" id="patient_id" value="{{ preselected_patient_id or '' }}" />
+      <input type="hidden" name="pending_id" id="pending_id" value="{{ preselected_pending_id or '' }}" />
+      {% if preselected_pending_id %}
+      <div class="form__row">
+        <label class="label">Patient</label>
+        <p class="muted" style="margin: 0; padding: 8px 12px; background: rgba(0,0,0,0.04); border-radius: 8px;">{{ preselected_pending_name }}</p>
+      </div>
+      {% else %}
       <div class="form__row">
         <label class="label" for="patient_search">Rechercher un patient <span class="required">*</span></label>
         <div class="autocomplete-wrap" style="position: relative;">
@@ -30,6 +40,7 @@
         </div>
         <p class="muted" style="margin-top: 4px; font-size: 12px;">Tapez le nom ou le prénom. Cliquez sur un résultat pour sélectionner.</p>
       </div>
+      {% endif %}
       <div class="form__row">
         <label class="label" for="appointment_date">Date <span class="required">*</span></label>
         <input class="input input--small" id="appointment_date" name="appointment_date" type="date" value="{{ preselected_date or '' }}" required />
@@ -70,7 +81,7 @@
     var MIN_CHARS = 1;
     var DEBOUNCE_MS = 550;
 
-    function renderResults(rows) {
+    if (searchEl && resultsEl) {
       if (rows.length === 0) {
         resultsEl.innerHTML = '<div class="autocomplete-item muted">Aucun patient trouvé</div>';
       } else {
@@ -86,6 +97,7 @@
     }
 
     function fetchPatients(q) {
+      if (!searchEl || !resultsEl) return;
       if (!q || q.length < MIN_CHARS) {
         resultsEl.style.display = 'none';
         return;
@@ -142,8 +154,9 @@
         resultsEl.style.display = 'none';
       }
     });
+    }
 
-    // Voir les RDV en fonction de la date
+    // Voir les RDV du jour
     var viewDateEl = document.getElementById('view_date');
     var appointmentDateEl = document.getElementById('appointment_date');
     var rdvListEl = document.getElementById('view_date_appointments');
