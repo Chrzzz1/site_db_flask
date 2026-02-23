@@ -81,7 +81,8 @@
     var MIN_CHARS = 1;
     var DEBOUNCE_MS = 550;
 
-    if (searchEl && resultsEl) {
+    function renderResults(rows) {
+      if (!searchEl || !resultsEl) return;
       if (rows.length === 0) {
         resultsEl.innerHTML = '<div class="autocomplete-item muted">Aucun patient trouvé</div>';
       } else {
@@ -169,8 +170,11 @@
         return;
       }
       rdvListEl.innerHTML = '<p class="muted">Chargement…</p>';
-      fetch('/api/appointments?date=' + encodeURIComponent(dateStr))
-        .then(function(r) { return r.json(); })
+      fetch('/api/appointments?date=' + encodeURIComponent(dateStr), { credentials: 'same-origin' })
+        .then(function(r) {
+          if (!r.ok) throw new Error('Erreur ' + r.status);
+          return r.json();
+        })
         .then(function(data) {
           var rows = data.rows || [];
           if (rows.length === 0) {
@@ -181,8 +185,8 @@
             }).join('') + '</ul>';
           }
         })
-        .catch(function() {
-          rdvListEl.innerHTML = '<p class="muted">Erreur.</p>';
+        .catch(function(err) {
+          rdvListEl.innerHTML = '<p class="muted">Erreur de chargement.</p>';
         });
     }
 
