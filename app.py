@@ -167,6 +167,11 @@ def create_app() -> Flask:
             return f(*args, **kwargs)
         return _inner
 
+    @app.get("/health")
+    def health():
+        """Route publique pour keep-alive (cron-job.org, UptimeRobot, etc.)."""
+        return jsonify({"status": "ok"}), 200
+
     @app.get("/login")
     def login():
         if session.get("user_id"):
@@ -1792,15 +1797,23 @@ def create_app() -> Flask:
         if mime == "application/octet-stream" and file.filename.lower().endswith(".pdf"):
             mime = "application/pdf"
 
+        # Essayer Cloudinary en priorité, sinon Google Drive
+        url = None
         try:
-            from drive_upload import upload_fiche_to_drive
-
-            url = upload_fiche_to_drive(data, file.filename, mime, patient_name)
+            from cloudinary_upload import upload_fiche_to_cloudinary
+            url = upload_fiche_to_cloudinary(data, file.filename, mime, patient_name)
         except ImportError:
-            url = None
+            pass
 
         if not url:
-            return jsonify({"error": "Upload non configuré ou échec. Vérifiez GOOGLE_DRIVE_CREDENTIALS_JSON et GOOGLE_DRIVE_FOLDER_ID."}), 500
+            try:
+                from drive_upload import upload_fiche_to_drive
+                url = upload_fiche_to_drive(data, file.filename, mime, patient_name)
+            except ImportError:
+                pass
+
+        if not url:
+            return jsonify({"error": "Upload non configuré ou échec. Vérifiez CLOUDINARY_* ou GOOGLE_DRIVE_* dans les variables d'environnement."}), 500
         return jsonify({"url": url})
 
     def _admin_mod_reqs_with_summary(rows):

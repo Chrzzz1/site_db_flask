@@ -9,6 +9,8 @@ Pillow>=10.0.0
 # Google Drive (upload fiches numérisées)
 google-api-python-client>=2.100.0
 google-auth>=2.22.0
+# Cloudinary (alternative pour upload fiches)
+cloudinary>=1.36.0
 
 # Production (EC2, etc.)
 gunicorn>=21.0.0
