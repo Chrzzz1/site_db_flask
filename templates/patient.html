@@ -61,13 +61,35 @@
 
       {% if fiches %}
         <h2>Fiches</h2>
-        <ul class="fiches-list">
+        <div class="fiches-grid">
           {% for num, url in fiches %}
-            <li>
-              <a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="fiche-link">Fiche #{{ num }}</a>
-            </li>
+            {% set u = (url or '') | lower %}
+            {% set is_image = u.endswith('.jpg') or u.endswith('.jpeg') or u.endswith('.png') or u.endswith('.webp') or ('/image/upload/' in u) %}
+            {% set is_pdf = u.endswith('.pdf') or ('/raw/upload/' in u and '.pdf' in u) %}
+            <div class="fiche-card">
+              <div class="fiche-card__header">
+                <div class="fiche-card__title">Fiche #{{ num }}</div>
+                <a class="btn btn--small btn--ghost" href="{{ url }}" target="_blank" rel="noopener noreferrer">Voir</a>
+              </div>
+              {% if is_image %}
+                <a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="fiche-card__preview">
+                  <img src="{{ url }}" alt="Fiche #{{ num }}" loading="lazy" />
+                </a>
+              {% else %}
+                <div class="fiche-card__meta muted">
+                  {% if is_pdf %}
+                    PDF
+                  {% else %}
+                    Lien
+                  {% endif %}
+                </div>
+              {% endif %}
+              <div class="fiche-card__url">
+                <a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a>
+              </div>
+            </div>
           {% endfor %}
-        </ul>
+        </div>
       {% else %}
         <p class="muted">Aucune fiche renseignée.</p>
       {% endif %}

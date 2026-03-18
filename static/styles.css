@@ -212,6 +212,56 @@ a:hover { text-decoration: underline; }
 .fiche-upload-input { display: none; }
 .fiche-upload-btn { flex-shrink: 0; white-space: nowrap; }
 
+/* Affichage fiches (visualisation) */
+.fiches-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.fiche-card{
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.02);
+  border-radius: 16px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+.fiche-card__header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+.fiche-card__title{
+  font-size: 13px;
+  font-weight: 650;
+}
+.fiche-card__preview{
+  display:block;
+  border-radius: 12px;
+  overflow:hidden;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(255,255,255,0.8);
+}
+.fiche-card__preview img{
+  display:block;
+  width:100%;
+  height:180px;
+  object-fit:cover;
+}
+.fiche-card__meta{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(0,0,0,0.15);
+  background: rgba(255,255,255,0.5);
+}
+.fiche-card__url{
+  font-size: 12px;
+  word-break: break-all;
+  line-height: 1.35;
+}
+
 /* Calendrier type Google Agenda */
 .calendar-nav {
   display: flex;
